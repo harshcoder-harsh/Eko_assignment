@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - FRONTEND_URL=http://localhost:3000
+      - API_URL=http://localhost:8000
+      # You MUST provide these either here or via a .env file
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - MONGODB_URI=${MONGODB_URI}
+      - GOOGLE_CREDENTIALS_PATH=/app/credentials.json
+    volumes:
+      # Mount the credentials file into the container
+      - ./credentials.json:/app/credentials.json:ro
+      # Persist the FAISS index and uploaded files
+      - backend_data:/app/synced_docs
+      # Persist uploaded analytics datasets
+      - analytics_data:/app/analytics_data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/auth/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend_data:
+  analytics_data:
