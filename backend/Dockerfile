@@ -12,8 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Ensure the synced_docs directory exists with proper permissions
-RUN mkdir -p synced_docs && chmod 777 synced_docs
+# Ensure the data directories exist with proper permissions
+RUN mkdir -p synced_docs analytics_data && chmod 777 synced_docs analytics_data
 
 EXPOSE 8000
 
