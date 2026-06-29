@@ -6,7 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Upload, Database, Trash2, Loader2, Play, Sparkles, ArrowLeft,
-  BarChart3, Activity, AlertTriangle, Users, FileBarChart, RefreshCw,
+  BarChart3, Activity, AlertTriangle, Users, FileBarChart, RefreshCw, Link2,
 } from "lucide-react";
 import { getApiBaseUrl } from "@/utils/apiBaseUrl";
 import { ResultView } from "@/components/analytics/ResultView";
@@ -31,6 +31,7 @@ export default function AnalyticsPage() {
   const [running, setRunning] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>("");
+  const [dataUrl, setDataUrl] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const api = getApiBaseUrl();
@@ -64,6 +65,23 @@ export default function AnalyticsPage() {
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const importDataUrl = async () => {
+    if (!dataUrl.trim()) return;
+    setUploading(true);
+    setError("");
+    try {
+      const res = await axios.post(`${api}/analytics/import-url`, { url: dataUrl.trim() });
+      await fetchDatasets();
+      setActiveId(res.data.dataset.dataset_id);
+      setDataUrl("");
+      setResult(null);
+    } catch (e: any) {
+      setError(e.response?.data?.detail || "URL import failed.");
+    } finally {
+      setUploading(false);
     }
   };
 
