@@ -17,6 +17,9 @@ backend/local_db/
 backend/synced_docs/
 backend/faiss_index.bin
 
+# Uploaded analytics datasets (keep the committed sample under sample_data/)
+backend/analytics_data/
+
 # Python
 __pycache__/
 *.py[cod]
