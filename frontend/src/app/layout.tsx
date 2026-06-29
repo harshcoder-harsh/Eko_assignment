@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Highwatch RAG",
-  description: "Google Drive-powered AI Q&A system",
+  description: "AI Q&A and business analytics over your own documents and data",
 };
 
 export default function RootLayout({
