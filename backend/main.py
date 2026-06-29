@@ -15,6 +15,7 @@ load_dotenv()
 
 from api.routes import router
 from api.analytics_routes import router as analytics_router
+from api.upload_routes import router as documents_router
 
 app = FastAPI(title="Highwatch RAG API")
 
@@ -38,6 +39,7 @@ app.add_middleware(
 
 app.include_router(router)
 app.include_router(analytics_router)
+app.include_router(documents_router)
 
 if __name__ == "__main__":
     import uvicorn
