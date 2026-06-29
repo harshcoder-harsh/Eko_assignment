@@ -154,3 +154,23 @@ except Exception as e:
     chats_collection = MockCollection("local_db/chats.json")
     USING_MONGO = False
 
+# Registry so feature modules (e.g. analytics) can request arbitrary collections
+# without each having to re-implement the Mongo/JSON fallback logic.
+_collection_cache = {
+    "files": files_collection,
+    "chats": chats_collection,
+}
+
+
+def db_get_collection(name):
+    """Return a collection by name, backed by Mongo or the JSON fallback."""
+    if name in _collection_cache:
+        return _collection_cache[name]
+    if USING_MONGO and db is not None:
+        coll = db[name]
+    else:
+        if not os.path.exists("local_db"):
+            os.makedirs("local_db")
+        coll = MockCollection(f"local_db/{name}.json")
+    _collection_cache[name] = coll
+    return coll
