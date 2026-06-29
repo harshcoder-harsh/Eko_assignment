@@ -44,6 +44,51 @@ Built as a trial assignment for the **AI Platform Engineer** role at **Highwatch
 
 ---
 
+## 🧠 Business Analytics Agents ("Claws")
+
+In addition to document Q&A, Highwatch ships an **autonomous Data / Business
+Analytics Agent** layer. Upload a CSV/Excel file (or import a spreadsheet from
+Google Drive) and run any of five specialised agents over it.
+
+> **Design principle:** every number is computed **deterministically** in
+> `pandas` / `numpy` / `scikit-learn`. The LLM (Groq) is used *only* to turn the
+> pre-computed statistics into a readable narrative — it is explicitly forbidden
+> from inventing figures. If `GROQ_API_KEY` is missing or rate-limited, each
+> agent gracefully falls back to a computed-facts summary, so it never breaks.
+
+| Claw | What it does |
+|------|--------------|
+| **Data Analyst** | Cleans the data, surfaces KPIs + trends + correlations, and writes a structured insight summary. |
+| **KPI Monitoring** | Compares each metric period-over-period, flags significant moves, explains likely causes, recommends actions. |
+| **Anomaly Detection** | Flags unusual values/exceptions using **z-score + IQR**, with timestamps and explanations. |
+| **Customer Segmentation** | Clusters customers/entities with **KMeans** (auto-`k` via silhouette score) and describes each segment in business terms. |
+| **Business Performance** | Orchestrates all of the above into an executive report: highlights, risks, segment insights, and prioritised next actions. |
+
+### How it works
+1. **Ingest** — CSV/XLSX/TSV upload or Google Sheets/Drive import → cleaned (whitespace, dupes, currency→numeric, date parsing) → stored as Parquet with metadata in MongoDB.
+2. **Compute** — `analytics/engine.py` computes KPIs, time-series trends (with partial-bucket trimming), anomalies, period changes, and segments.
+3. **Narrate** — `analytics/narrator.py` sends the computed JSON facts to Groq for a grounded, markdown insight.
+4. **Visualise** — the `/analytics` dashboard renders KPI cards, sparkline trends, anomaly tables, and segment cards.
+
+### Analytics API
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/analytics/upload` | Upload a CSV/Excel dataset (multipart) |
+| `GET`  | `/analytics/datasets` | List the user's datasets |
+| `GET`  | `/analytics/dataset/{id}` | Dataset profile + preview |
+| `DELETE` | `/analytics/dataset/{id}` | Delete a dataset |
+| `GET`  | `/analytics/drive/list` | List CSV/Excel/Sheets in Drive |
+| `POST` | `/analytics/drive/import?file_id=...` | Import a Drive spreadsheet |
+| `GET`  | `/analytics/claws` | List available agents |
+| `POST` | `/analytics/run` | Run a Claw `{ dataset_id, claw }` |
+
+A ready-to-use demo file lives at **`sample_data/sales_sample.csv`** (540 rows of
+synthetic sales data with an embedded trend + injected anomalies).
+
+Open the dashboard and click **"Analytics Agents"** in the sidebar, or go to `/analytics`.
+
+---
+
 ## 🛠 Tech Stack
 
 **Backend:**
@@ -52,6 +97,7 @@ Built as a trial assignment for the **AI Platform Engineer** role at **Highwatch
 * FAISS (Vector Database)
 * MongoDB (NoSQL Database)
 * PyTorch & SentenceTransformers (Embeddings)
+* **pandas / NumPy / scikit-learn (Analytics Agents)**
 * Groq SDK (LLM Inference)
 * Google API Client (OAuth & Drive)
 
