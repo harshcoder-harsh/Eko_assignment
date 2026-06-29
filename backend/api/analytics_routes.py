@@ -10,6 +10,10 @@ Endpoints:
   GET    /analytics/claws             - list available agents
   POST   /analytics/run               - run a Claw on a dataset
 """
+import os
+from urllib.parse import urlparse, unquote
+
+import requests
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
 from typing import Optional
@@ -67,6 +71,52 @@ async def upload_dataset(file: UploadFile = File(...)):
         user_email = _current_user_email()
         try:
             meta = data_loader.save_dataset(content, file.filename, user_email, source="upload")
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        return {"status": "success", "dataset": meta}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ImportUrlRequest(BaseModel):
+    url: str
+
+
+@router.post("/import-url")
+def import_url(req: ImportUrlRequest):
+    """Import a dataset from a direct CSV/Excel link (no Google auth needed)."""
+    try:
+        try:
+            resp = requests.get(req.url, timeout=30, stream=True, headers={"User-Agent": "Highwatch-RAG/1.0"})
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            raise HTTPException(status_code=400, detail=f"Could not fetch URL: {e}")
+
+        content = b""
+        for chunk in resp.iter_content(8192):
+            content += chunk
+            if len(content) > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=400, detail="File too large (max 25 MB).")
+        if not content:
+            raise HTTPException(status_code=400, detail="The URL returned an empty file.")
+
+        filename = unquote(os.path.basename(urlparse(req.url).path)) or "dataset.csv"
+        if not os.path.splitext(filename)[1]:
+            # Infer extension from content-type when the URL has none.
+            ctype = resp.headers.get("content-type", "")
+            if "csv" in ctype:
+                filename += ".csv"
+            elif "sheet" in ctype or "excel" in ctype:
+                filename += ".xlsx"
+            else:
+                filename += ".csv"
+
+        try:
+            meta = data_loader.save_dataset(content, filename, _current_user_email(), source="url")
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         return {"status": "success", "dataset": meta}
