@@ -155,7 +155,7 @@ export function ChatInterface() {
               <div className="text-center">
                 <p className="text-xl font-medium text-white/70 mb-2">How can I help you today?</p>
                 <p className="text-sm font-normal max-w-sm text-white/40">
-                  Ask anything about the documents in your synced Google Drive.
+                  Ask anything about the documents you've uploaded.
                 </p>
               </div>
             </div>
