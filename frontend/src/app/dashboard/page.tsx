@@ -5,7 +5,7 @@ import { SyncPanel } from "@/components/SyncPanel";
 import { DocsPanel } from "@/components/DocsPanel";
 import { useState, useEffect, Suspense } from "react";
 import axios from "axios";
-import { Sparkles, BarChart3 } from "lucide-react";
+import { Sparkles, BarChart3, LifeBuoy } from "lucide-react";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/utils/apiBaseUrl";
 
@@ -76,6 +76,17 @@ function DashboardContent() {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-white/85">Analytics Agents</p>
             <p className="text-[0.68rem] text-white/40">Analyze CSV / Excel data</p>
+          </div>
+        </Link>
+
+        {/* Support Agent link */}
+        <Link href="/support" className="mx-5 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.08] hover:bg-white/[0.06] hover:border-white/20 transition-all group">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-white/20 to-white/5 flex items-center justify-center group-hover:from-white group-hover:to-white/80 transition-all">
+            <LifeBuoy className="w-4 h-4 text-white/70 group-hover:text-black transition-colors" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white/85">Support Agent</p>
+            <p className="text-[0.68rem] text-white/40">Hermes Escalation Claw</p>
           </div>
         </Link>
 
