@@ -18,7 +18,7 @@ Rules:
 
 
 def draft_response(query: str, issue_type: str, severity: str, context_block: str) -> str:
-    if not context_block.strip():
+   if not context_block.strip() and not memory_context.strip():
         return "I don't have enough information in our SOPs to resolve this."
 
     try:
