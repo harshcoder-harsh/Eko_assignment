@@ -140,7 +140,7 @@ useEffect(() => { load(); }, [load]);
                 <h1 className="text-2xl font-bold tracking-tight">AI Observability</h1>
               </div>
               <p className="text-sm text-zinc-500 mt-0.5">
-                Every agent run, traced end to end — without leaving Highwatch.
+                Every agent run, traced end to end — without leaving FlowClaw.
               </p>
             </div>
           </div>

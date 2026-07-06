@@ -17,7 +17,7 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl text-white font-medium mb-3">1. Introduction</h2>
             <p>
-              Welcome to Highwatch RAG ("we," "our," or "us"). We are committed to protecting your privacy. This Privacy Policy explains how your personal information and Google Drive data are collected, used, and protected when you use our application.
+              Welcome to FlowClaw ("we," "our," or "us"). We are committed to protecting your privacy. This Privacy Policy explains how your personal information and Google Drive data are collected, used, and protected when you use our application.
             </p>
           </section>
 
@@ -61,7 +61,7 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl text-white font-medium mb-3">6. Google API Services User Data Policy</h2>
             <p>
-              Highwatch RAG's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Google API Services User Data Policy</a>, including the Limited Use requirements.
+              FlowClaw's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Google API Services User Data Policy</a>, including the Limited Use requirements.
             </p>
           </section>
         </div>

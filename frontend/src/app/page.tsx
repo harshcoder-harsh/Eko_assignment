@@ -300,7 +300,7 @@ function HomeContent() {
         >
           <Sparkles className="w-3.5 h-3.5 text-white/70" />
           <span className="text-xs font-semibold tracking-[0.2em] uppercase text-white/70">
-            Highwatch RAG Engine (LLaMA 3.3 70B)
+            FlowClaw Engine (LLaMA 3.3 70B)
           </span>
         </motion.div>
 

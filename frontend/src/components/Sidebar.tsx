@@ -25,7 +25,7 @@ export function Sidebar() {
         <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary to-accent flex items-center justify-center shadow-[0_0_15px_rgba(139,92,246,0.5)]">
           <span className="font-bold text-white text-sm">H</span>
         </div>
-        <span className="font-bold text-xl tracking-tight">Highwatch</span>
+        <span className="font-bold text-xl tracking-tight">FlowClaw</span>
       </div>
 
       <nav className="flex-1 space-y-2">

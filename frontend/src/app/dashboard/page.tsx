@@ -74,7 +74,7 @@ function DashboardContent() {
           <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center mr-3 shadow-[0_0_15px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-transform">
             <Sparkles className="w-4 h-4 text-black" />
           </div>
-          <span className="font-semibold tracking-wide text-[0.95rem] text-white/90 group-hover:text-white transition-colors">Highwatch RAG</span>
+          <span className="font-semibold tracking-wide text-[0.95rem] text-white/90 group-hover:text-white transition-colors">FlowClaw</span>
         </Link>
 
         {/* Analytics Agents link */}

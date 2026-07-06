@@ -17,14 +17,14 @@ export default function TermsOfService() {
           <section>
             <h2 className="text-xl text-white font-medium mb-3">1. Agreement to Terms</h2>
             <p>
-              By accessing or using Highwatch RAG (the "Service"), you agree to be bound by these Terms of Service. If you disagree with any part of these terms, you may not access the Service.
+              By accessing or using FlowClaw (the "Service"), you agree to be bound by these Terms of Service. If you disagree with any part of these terms, you may not access the Service.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl text-white font-medium mb-3">2. Description of Service</h2>
             <p>
-              Highwatch RAG is an AI-powered application that integrates with your Google Drive. The Service reads your documents (such as PDFs and Text files), extracts the text, creates vector embeddings, and uses a Large Language Model (LLM) to answer questions based on the content of your documents.
+              FlowClaw is an AI-powered application that integrates with your Google Drive. The Service reads your documents (such as PDFs and Text files), extracts the text, creates vector embeddings, and uses a Large Language Model (LLM) to answer questions based on the content of your documents.
             </p>
           </section>
 

@@ -27,7 +27,7 @@ from api.support_routes import router as support_router
 from api.observability_routes import router as observability_router
 from api.auth_routes import router as auth_router
 
-app = FastAPI(title="Highwatch RAG API")
+app = FastAPI(title="FlowClaw API")
 
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
 # Clean any trailing slashes to prevent exact-match CORS errors

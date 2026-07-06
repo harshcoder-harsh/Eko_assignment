@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Highwatch RAG",
+  title: "FlowClaw",
   description: "AI Q&A and business analytics over your own documents and data",
 };
 
