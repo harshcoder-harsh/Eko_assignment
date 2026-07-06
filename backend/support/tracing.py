@@ -87,6 +87,14 @@ def _get_client():
 def is_enabled() -> bool:
     return _get_client() is not None
 
+def get_client():
+    """Public accessor for the shared Langfuse client (or None if disabled).
+
+    Used by the observability API routes to *read* traces back out of
+    Langfuse. Returns the same lazily-initialised client used for writing.
+    """
+    return _get_client()
+
 
 @contextmanager
 def observation(name: str, as_type: str = "span", input=None, metadata=None):

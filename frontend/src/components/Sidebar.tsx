@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, HardDrive, MessageSquare, Settings } from "lucide-react";
+import { LayoutDashboard, HardDrive, MessageSquare, Activity } from "lucide-react";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -12,6 +12,7 @@ export function Sidebar() {
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Documents", href: "/dashboard#docs", icon: HardDrive },
     { name: "Chat", href: "/dashboard#chat", icon: MessageSquare },
+    { name: "AI Observability", href: "/observability", icon: Activity },
   ];
 
   return (

@@ -17,8 +17,8 @@ Rules:
 4. If steps are involved, use a numbered list."""
 
 
-def draft_response(query: str, issue_type: str, severity: str, context_block: str) -> str:
-   if not context_block.strip() and not memory_context.strip():
+def draft_response(query: str, issue_type: str, severity: str, context_block: str, memory_context: str = "") -> str:
+    if not context_block.strip() and not memory_context.strip():
         return "I don't have enough information in our SOPs to resolve this."
 
     try:
@@ -28,6 +28,8 @@ def draft_response(query: str, issue_type: str, severity: str, context_block: st
 
         user_msg = f"""Issue type: {issue_type}
 Severity: {severity}
+
+{f"User History:{memory_context}" if memory_context else ""}
 
 SOP Context:
 {context_block}

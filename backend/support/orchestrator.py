@@ -95,6 +95,7 @@ def run_support_workflow(query: str, user_email: str = "default_user") -> dict:
             })
 
         # Step 4: Draft response
+        _model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
         with tracing.observation(
             "draft_response",
             as_type="generation",
@@ -104,7 +105,7 @@ def run_support_workflow(query: str, user_email: str = "default_user") -> dict:
                 "severity": classification["severity"],
                 "has_memory_context": bool(memory_context),
             },
-            metadata={"model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")},
+            metadata={"model": _model, "token_source": "estimated"},
         ) as span:
             draft = draft_response(
                 query=query,
@@ -114,7 +115,24 @@ def run_support_workflow(query: str, user_email: str = "default_user") -> dict:
                 memory_context=memory_context,
             )
             audit.log_event(run_id, "DRAFTED", {"draft_response": draft})
-            span.update(output=draft)
+
+            # Hermes' agent.chat() returns only text, so we don't have the
+            # provider's real token counts. Estimate them (~4 chars/token) so
+            # the observability dashboard can show token + cost figures.
+            # Marked "estimated" in metadata above so the numbers aren't
+            # mistaken for exact provider usage.
+            _prompt_text = f"{query}\n{classification['issue_type']}\n{classification['severity']}\n{retrieval['context_block']}\n{memory_context}"
+            _in_tokens = max(1, len(_prompt_text) // 4)
+            _out_tokens = max(1, len(draft or "") // 4)
+            span.update(
+                output=draft,
+                model=_model,
+                usage_details={
+                    "input": _in_tokens,
+                    "output": _out_tokens,
+                    "total": _in_tokens + _out_tokens,
+                },
+            )
 
         # Step 5: Escalation
         with tracing.observation(
