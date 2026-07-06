@@ -12,8 +12,8 @@ import os
 mem0_client = MemoryClient(api_key=os.getenv("MEM0_API_KEY"))
 
 
-def run_support_workflow(query: str, user_email: str = "default_user") -> dict:
-    run_id = audit.start_run(user_email, query)
+def run_support_workflow(query: str, user_email: str = "default_user", org_id: str = None) -> dict:
+    run_id = audit.start_run(user_email, query, org_id=org_id)
     audit.log_event(run_id, "RECEIVED", {"query": query})
 
     # The whole run is one Langfuse trace (root observation). Each workflow
@@ -116,11 +116,9 @@ def run_support_workflow(query: str, user_email: str = "default_user") -> dict:
             )
             audit.log_event(run_id, "DRAFTED", {"draft_response": draft})
 
-            # Hermes' agent.chat() returns only text, so we don't have the
-            # provider's real token counts. Estimate them (~4 chars/token) so
-            # the observability dashboard can show token + cost figures.
-            # Marked "estimated" in metadata above so the numbers aren't
-            # mistaken for exact provider usage.
+            # Hermes' agent.chat() returns only text, so we estimate tokens
+            # (~4 chars/token) for the observability dashboard. Marked
+            # "estimated" in metadata so it's not mistaken for real usage.
             _prompt_text = f"{query}\n{classification['issue_type']}\n{classification['severity']}\n{retrieval['context_block']}\n{memory_context}"
             _in_tokens = max(1, len(_prompt_text) // 4)
             _out_tokens = max(1, len(draft or "") // 4)
@@ -162,6 +160,7 @@ def run_support_workflow(query: str, user_email: str = "default_user") -> dict:
                 draft_response=draft,
                 status=status,
                 escalation_reason=escalation_reason,
+                org_id=org_id,
             )
             audit.log_event(run_id, "TICKETED", {
                 "ticket_id": ticket["ticket_id"],

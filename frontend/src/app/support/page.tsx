@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, LifeBuoy, Send, ShieldAlert, CheckCircle, Ticket, 
-  HelpCircle, RefreshCw, Loader2, Play, Eye, BookOpen, Clock, Activity
+  ArrowLeft, LifeBuoy, Send, ShieldAlert, CheckCircle, Ticket,
+  RefreshCw, Loader2, Eye, BookOpen, Clock, Activity
 } from "lucide-react";
 import { getApiBaseUrl } from "@/utils/apiBaseUrl";
 
@@ -24,7 +24,7 @@ interface TicketItem {
 
 interface AuditEvent {
   step: string;
-  detail: any;
+  detail: Record<string, unknown>;
   timestamp: string;
 }
 
@@ -37,10 +37,27 @@ interface AuditRun {
   started_at: string;
 }
 
+interface RunSource {
+  doc_id: string;
+  name: string;
+  chunk_text?: string;
+}
+
+interface ActiveRun {
+  run_id: string;
+  state: string;
+  query?: string;
+  classification?: { issue_type: string; severity: string; reasoning?: string };
+  draft_response?: string;
+  sources?: RunSource[];
+  scoped_to_sop?: boolean;
+  ticket?: TicketItem | null;
+}
+
 export default function SupportClawPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeRun, setActiveRun] = useState<any>(null);
+  const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [auditDetail, setAuditDetail] = useState<AuditRun | null>(null);
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [activeTab, setActiveTab] = useState<"reasoning" | "audit" | "tickets">("reasoning");
@@ -81,8 +98,8 @@ export default function SupportClawPage() {
       }
       setQuery("");
       fetchTickets();
-    } catch (err: any) {
-      setErrorMessage(err.response?.data?.detail || "An error occurred during workflow execution.");
+    } catch (err) {
+      setErrorMessage(axios.isAxiosError(err) && err.response?.data?.detail ? String(err.response.data.detail) : "An error occurred during workflow execution.");
     } finally {
       setLoading(false);
     }
@@ -104,76 +121,23 @@ export default function SupportClawPage() {
       setSuccessMessage("Ticket resolved successfully!");
       fetchTickets();
       if (activeRun?.ticket?.ticket_id === ticketId) {
-        setActiveRun((prev: any) => prev ? { ...prev, ticket: { ...prev.ticket, status: "resolved" } } : null);
+        setActiveRun((prev) => prev && prev.ticket ? { ...prev, ticket: { ...prev.ticket, status: "resolved" } } : prev);
       }
     } catch {
       setErrorMessage("Failed to resolve ticket.");
     }
   };
 
-  // Safe API helper methods to catch & return mock answers if backend drops offline
+  // API helpers. These intentionally do NOT fabricate data on failure —
+  // errors propagate to the callers' catch blocks and surface in the UI, so a
+  // real backend problem (auth, server error, network) is never silently
+  // masked by fake results.
   const handleApiGet = async (url: string) => {
-    try {
-      return await axios.get(url);
-    } catch (e) {
-      // Fallback mocks for offline testing
-      if (url.includes("/support/audit")) {
-        const runId = url.split("/").pop();
-        return {
-          data: {
-            run_id: runId || "mock-id",
-            user_email: "default_user",
-            query: activeRun?.query || "Test Support Inquiry",
-            state: activeRun?.state || "ESCALATED",
-            started_at: new Date().toISOString(),
-            events: [
-              { step: "RECEIVED", timestamp: new Date().toISOString(), detail: { query: activeRun?.query } },
-              { step: "CLASSIFIED", timestamp: new Date().toISOString(), detail: activeRun?.classification || { issue_type: "billing", severity: "medium", reasoning: "Mock reasoning path" } },
-              { step: "SOP_RETRIEVED", timestamp: new Date().toISOString(), detail: { scoped_to_sop: true, num_sources: 1, source_names: ["Refund_SOP.txt"] } },
-              { step: "DRAFTED", timestamp: new Date().toISOString(), detail: { draft_response: activeRun?.draft_response } },
-              ...(activeRun?.state === "ESCALATED" ? [{ step: "ESCALATED", timestamp: new Date().toISOString(), detail: { reason: "Mandatory Escalation Rules applied." } }] : [])
-            ]
-          }
-        };
-      }
-      throw e;
-    }
+    return await axios.get(url);
   };
 
-  const handleApiPost = async (url: string, payload: any) => {
-    try {
-      return await axios.post(url, payload);
-    } catch (e) {
-      // Return simulated Hermes Agent run if API endpoint fails locally (offline fallback)
-      if (url.includes("/support/resolve")) {
-        const isCritical = payload.query.toLowerCase().includes("down") || payload.query.toLowerCase().includes("critical");
-        const mockRun = {
-          run_id: Math.random().toString(36).substring(7),
-          state: isCritical ? "ESCALATED" : "RESOLVED",
-          classification: {
-            issue_type: payload.query.toLowerCase().includes("refund") ? "billing" : "technical",
-            severity: isCritical ? "critical" : "low",
-            reasoning: "Reasoning generated under local sandbox execution (offline fallback mode)."
-          },
-          draft_response: isCritical 
-            ? "I don't have enough information in our SOPs to resolve critical production server downtime issues. I've raised an escalation ticket for immediate engineering assistance." 
-            : "To request a refund, navigate to Settings > Billing > Request Refund. Your pro-rated refund will be processed within 5-10 business days.",
-          sources: [{ doc_id: "refund_sop_chunk_0", name: "Refund_SOP.txt", chunk_text: "Mock text chunk" }],
-          scoped_to_sop: true,
-          ticket: isCritical ? {
-            ticket_id: Math.random().toString(36).substring(7),
-            user_email: "default_user",
-            query: payload.query,
-            issue_type: "technical",
-            severity: "critical",
-            draft_response: "Downtime alert received.",
-            status: "escalated"
-          } : null
-        };
-        return { data: mockRun };
-      }
-      throw e;
-    }
+  const handleApiPost = async (url: string, payload: unknown) => {
+    return await axios.post(url, payload);
   };
 
   return (
@@ -299,7 +263,7 @@ export default function SupportClawPage() {
                         <div className="mt-4 pt-3 border-t border-white/[0.06] space-y-1">
                           <p className="text-[0.65rem] font-semibold text-white/40 uppercase tracking-wider">Citations ({activeRun.sources.length})</p>
                           <div className="flex flex-wrap gap-1.5">
-                            {activeRun.sources.map((src: any, idx: number) => (
+                            {activeRun.sources.map((src, idx: number) => (
                               <span key={idx} className="text-[0.65rem] px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.05] text-white/60 flex items-center gap-1 font-mono">
                                 <BookOpen className="w-2.5 h-2.5 text-white/30" />
                                 {src.name}
@@ -336,7 +300,7 @@ export default function SupportClawPage() {
                       </div>
 
                       {activeRun.ticket.status !== "resolved" && (
-                        <button onClick={() => resolveTicket(activeRun.ticket.ticket_id)}
+                        <button onClick={() => activeRun.ticket && resolveTicket(activeRun.ticket.ticket_id)}
                           className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 text-black hover:bg-emerald-400 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/10">
                           <CheckCircle className="w-3.5 h-3.5" />
                           Mark Ticket Resolved
@@ -530,3 +494,4 @@ export default function SupportClawPage() {
     </div>
   );
 }
+

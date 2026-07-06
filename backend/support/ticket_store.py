@@ -20,9 +20,11 @@ VALID_STATUSES = [OPEN, ESCALATED, RESOLVED]
 
 
 def create_ticket(user_email: str, query: str, issue_type: str, severity: str,
-                   draft_response: str, status: str = OPEN, escalation_reason: str = None) -> dict:
+                   draft_response: str, status: str = OPEN, escalation_reason: str = None,
+                   org_id: str = None) -> dict:
     ticket = {
         "ticket_id": str(uuid.uuid4()),
+        "org_id": org_id,
         "user_email": user_email,
         "query": query,
         "issue_type": issue_type,
@@ -34,11 +36,14 @@ def create_ticket(user_email: str, query: str, issue_type: str, severity: str,
         "updated_at": datetime.utcnow().isoformat(),
     }
     tickets_collection.insert_one(ticket)
+    ticket.pop("_id", None)
     return ticket
 
 
-def list_tickets(user_email: str = None, status: str = None) -> list:
+def list_tickets(user_email: str = None, status: str = None, org_id: str = None) -> list:
     query = {}
+    if org_id:
+        query["org_id"] = org_id
     if user_email:
         query["user_email"] = user_email
     if status:

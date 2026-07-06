@@ -5,14 +5,23 @@ import { SyncPanel } from "@/components/SyncPanel";
 import { DocsPanel } from "@/components/DocsPanel";
 import { useState, useEffect, Suspense } from "react";
 import axios from "axios";
-import { Sparkles, BarChart3, LifeBuoy, Activity } from "lucide-react";
+import { Sparkles, BarChart3, LifeBuoy, Activity, LogOut } from "lucide-react";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/utils/apiBaseUrl";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth";
 
 function DashboardContent() {
   const [docs, setDocs] = useState<{ id: string, name: string, status: string }[]>([]);
   // No login required — the dashboard always renders.
   const [isAuthenticated] = useState<boolean>(true);
+  const { user, org, logout } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    logout();
+    router.replace("/login");
+  };
 
   useEffect(() => {
     const fetchDocs = async () => {
@@ -111,7 +120,32 @@ function DashboardContent() {
           <h3 className="text-[0.7rem] font-semibold text-white/40 uppercase tracking-[0.15em] mb-4 pl-1">Knowledge Base</h3>
           <DocsPanel docs={docs} onDocumentClick={handleDocumentClick} />
         </div>
-      </div>
+
+        {/* User footer */}
+        {user && (
+          <div className="border-t border-white/[0.06] p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-400 flex items-center justify-center text-sm font-semibold text-white shrink-0">
+                {(user.name || user.email || "?").charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white/90 truncate">{user.name || user.email}</p>
+                <p className="text-[0.68rem] text-white/40 truncate">
+                  {org?.name ? `${org.name} · ` : ""}
+                  <span className="uppercase tracking-wide text-violet-300/80">{user.role}</span>
+                </p>
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Sign out"
+                className="p-2 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>=
 
       {/* Right Column: Chat */}
       <div className="flex-1 relative z-10 flex flex-col min-w-0 bg-transparent">

@@ -25,6 +25,7 @@ from api.analytics_routes import router as analytics_router
 from api.upload_routes import router as documents_router
 from api.support_routes import router as support_router
 from api.observability_routes import router as observability_router
+from api.auth_routes import router as auth_router
 
 app = FastAPI(title="Highwatch RAG API")
 
@@ -53,6 +54,7 @@ app.include_router(analytics_router)
 app.include_router(documents_router)
 app.include_router(support_router)
 app.include_router(observability_router)
+app.include_router(auth_router)
 
 if __name__ == "__main__":
     import uvicorn

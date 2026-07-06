@@ -96,7 +96,7 @@ export default function ObservabilityPage() {
     }
 }, [api, hours]);
 
-// eslint-disable-next-line react-hooks/set-state-in-effect
+
 useEffect(() => { load(); }, [load]);
 
   const openTrace = async (id: string) => {

@@ -9,13 +9,12 @@ import { getApiBaseUrl } from "@/utils/apiBaseUrl";
 export function SyncPanel({ onSyncSuccess }: { onSyncSuccess: (docs: { id: string, name: string, status: string }[]) => void }) {
   const [status, setStatus] = useState<"idle" | "success" | "error" | "processing">("idle");
   const [message, setMessage] = useState("");
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<{ status?: string; docs_indexed?: number; total_chunks?: number; vectors?: number } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [docUrl, setDocUrl] = useState("");
   const docFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
     const checkStatus = async () => {
       try {
         const res = await axios.get(`${getApiBaseUrl()}/storage/stats`);
@@ -25,7 +24,7 @@ export function SyncPanel({ onSyncSuccess }: { onSyncSuccess: (docs: { id: strin
       }
     };
     checkStatus();
-    interval = setInterval(checkStatus, 5000);
+    const interval = setInterval(checkStatus, 5000);
     return () => { if (interval) clearInterval(interval); };
   }, []);
 
@@ -40,9 +39,9 @@ export function SyncPanel({ onSyncSuccess }: { onSyncSuccess: (docs: { id: strin
       setStatus("success");
       setMessage(`Indexed "${res.data.document.name}" (${res.data.document.chunks} chunks). Ask away!`);
       onSyncSuccess([{ id: res.data.document.id, name: res.data.document.name, status: "Indexed" }]);
-    } catch (err: any) {
+    } catch (err) {
       setStatus("error");
-      setMessage(err.response?.data?.detail || "Upload failed.");
+      setMessage(axios.isAxiosError(err) && err.response?.data?.detail ? String(err.response.data.detail) : "Upload failed.");
     } finally {
       setDocUploading(false);
       if (docFileRef.current) docFileRef.current.value = "";
@@ -60,9 +59,9 @@ export function SyncPanel({ onSyncSuccess }: { onSyncSuccess: (docs: { id: strin
       setMessage(`Indexed "${res.data.document.name}" (${res.data.document.chunks} chunks). Ask away!`);
       onSyncSuccess([{ id: res.data.document.id, name: res.data.document.name, status: "Indexed" }]);
       setDocUrl("");
-    } catch (err: any) {
+    } catch (err) {
       setStatus("error");
-      setMessage(err.response?.data?.detail || "Import failed.");
+      setMessage(axios.isAxiosError(err) && err.response?.data?.detail ? String(err.response.data.detail) : "Import failed.");
     } finally {
       setDocUploading(false);
     }

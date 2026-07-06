@@ -14,10 +14,11 @@ from db import db_get_collection
 audit_collection = db_get_collection("audit_log")
 
 
-def start_run(user_email: str, query: str) -> str:
+def start_run(user_email: str, query: str, org_id: str = None) -> str:
     run_id = str(uuid.uuid4())
     audit_collection.insert_one({
         "run_id": run_id,
+        "org_id": org_id,
         "user_email": user_email,
         "query": query,
         "events": [],
@@ -52,7 +53,11 @@ def get_run(run_id: str) -> dict:
     return audit_collection.find_one({"run_id": run_id})
 
 
-def list_runs(user_email: str = None) -> list:
-    query = {"user_email": user_email} if user_email else None
+def list_runs(user_email: str = None, org_id: str = None) -> list:
+    query = {}
+    if org_id:
+        query["org_id"] = org_id
+    if user_email:
+        query["user_email"] = user_email
     cursor = audit_collection.find(query) if query else audit_collection.find()
     return list(cursor)

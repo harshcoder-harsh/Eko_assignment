@@ -54,6 +54,7 @@ export function ChatInterface() {
     return () => {
       window.removeEventListener('requestDocumentSummary', handleDocumentSummaryRequest);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
   const handleSubmit = async (e?: React.FormEvent, overrideQuery?: string, filterMetadata?: any) => {

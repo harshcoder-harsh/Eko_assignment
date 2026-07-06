@@ -1,4 +1,5 @@
 import os
+import certifi
 import json
 import re
 from pymongo import MongoClient
@@ -134,7 +135,11 @@ try:
     if not MONGO_URI:
         raise Exception("MONGO_URI is not set")
     # Set a slightly longer timeout for remote MongoDB connection
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    client = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            tlsCAFile=certifi.where(),
+        )
     # Force a server call to verify connection
     client.server_info()
     
