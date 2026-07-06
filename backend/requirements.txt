@@ -38,7 +38,7 @@ numpy>=1.24.0,<2.0.0
 oauthlib==3.3.1
 openpyxl==3.1.5
 pandas>=2.0.0,<2.3.0
-pyarrow==16.1.0
+pyarrow>=14.0.0
 python-multipart==0.0.9
 packaging==26.2
 pillow==11.3.0
