@@ -349,10 +349,10 @@ export default function SupportClawPage() {
             </div>
 
             {/* Bottom input section */}
-            <form onSubmit={handleResolve} className="p-4 border-t border-white/[0.08] bg-[#050505]/40 flex items-center gap-3 relative">
+            <form onSubmit={handleResolve} className="p-4 pb-6 border-t border-white/[0.08] bg-[#050505]/40 flex items-center gap-3 relative">
               <input type="text" placeholder="Submit customer case query (e.g. production server is down)..."
                 value={query} onChange={(e) => setQuery(e.target.value)} disabled={loading}
-                className="flex-1 bg-[#0A0A0A] border border-white/10 text-white placeholder-white/30 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-white/20 transition-all" />
+                className="flex-1 bg-[#0A0A0A] border border-white/10 text-white placeholder-white/30 rounded-xl pl-6 pr-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-white/20 transition-all" />
               <button type="submit" disabled={loading || !query.trim()}
                 className="w-10 h-10 rounded-xl bg-white text-black hover:shadow-[0_0_15px_rgba(255,255,255,0.2)] disabled:opacity-40 hover:scale-[1.02] flex items-center justify-center shrink-0 transition-all">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
