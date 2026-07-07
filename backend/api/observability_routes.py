@@ -1,11 +1,12 @@
 """AI Observability API — reads traces back out of Langfuse so the frontend
-can render an in-app observability dashboard without leaving Highwatch.
+can render an in-app observability dashboard without leaving FlowClaw.
 
 All Langfuse access is server-side (the secret key never reaches the browser).
 Every endpoint degrades gracefully: if Langfuse is not configured, the routes
 return empty payloads with `enabled: false` rather than erroring, so the UI can
 show a "connect Langfuse" empty state instead of a crash.
 """
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query
@@ -261,13 +262,22 @@ def overview(hours: int = Query(24, ge=1, le=720)):
 
     # --- generations: token totals + per-model usage
     # NOTE: client.api.observations.get_many(type="GENERATION") returns
-    # generations WITHOUT model/usage populated (model shows "unknown",
-    # tokens 0). Reading each trace's observations via trace.get() DOES return
-    # them correctly (same path the trace-detail endpoint uses), so we iterate
-    # the recent traces instead. Capped to keep the endpoint responsive.
+    # generations WITHOUT model/usage populated (model "unknown", tokens 0).
+    # Reading each trace's observations via trace.get() DOES return them, but
+    # each call is a network round-trip to Langfuse — so we cap the number of
+    # traces we enrich AND enforce an overall time budget. If we run out of
+    # budget (Langfuse slow), we stop early and return what we have rather than
+    # hanging the request.
+    import time as _time
+    _budget_s = float(os.getenv("OBS_ENRICH_BUDGET_S", "4"))
+    _max_traces = int(os.getenv("OBS_ENRICH_MAX_TRACES", "8"))
+    _deadline = _time.monotonic() + _budget_s
+
     total_tokens = 0
     model_usage: dict[str, dict] = {}
-    for d in traces[:25]:
+    for d in traces[:_max_traces]:
+        if _time.monotonic() > _deadline:
+            break  # time budget exhausted — return partial token/model data
         tid = _first(d, "id")
         if not tid:
             continue
