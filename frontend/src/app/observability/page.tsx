@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -38,8 +38,8 @@ interface Span {
 interface TraceDetail {
   enabled: boolean; id: string; name: string; timestamp: string;
   latency_s: number; cost: number; total_tokens: number;
-  input: unknown; output: unknown; base_time: string | null;
-  spans: Span[]; reasoning: unknown; retrieved_docs: { span: string; output: unknown }[];
+  input: any; output: any; base_time: string | null;
+  spans: Span[]; reasoning: any; retrieved_docs: { span: string; output: any }[];
   error?: string;
 }
 
@@ -94,10 +94,9 @@ export default function ObservabilityPage() {
     } finally {
       setLoading(false);
     }
-}, [api, hours]);
+  }, [api, hours]);
 
-
-useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const openTrace = async (id: string) => {
     setLoadingDetail(true);
@@ -189,7 +188,7 @@ useEffect(() => { load(); }, [load]);
                 {overview?.time_series?.length ? (
                   <div className="flex items-end gap-1 h-32">
                     {overview.time_series.map((b) => (
-                      <div key={b.hour} className="flex-1 group relative flex flex-col justify-end">
+                      <div key={b.hour} className="flex-1 group relative flex flex-col justify-end h-full">
                         <div className="bg-gradient-to-t from-violet-600 to-violet-400 rounded-t-sm transition-all group-hover:from-violet-500 group-hover:to-violet-300"
                           style={{ height: `${(b.count / maxSeries) * 100}%`, minHeight: "3px" }} />
                         <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] text-zinc-400 opacity-0 group-hover:opacity-100 whitespace-nowrap">
@@ -303,10 +302,7 @@ useEffect(() => { load(); }, [load]);
 }
 
 // ---- sub-components ---------------------------------------------------------
-function Stat({ icon: Icon, label, value, sub, tint }: {
-    icon: React.ComponentType<{ className?: string }>;
-    label: string; value: React.ReactNode; sub: string; tint: string;
-  }) {
+function Stat({ icon: Icon, label, value, sub, tint }: any) {
   const tints: Record<string, string> = {
     violet: "text-violet-400", sky: "text-sky-400", fuchsia: "text-fuchsia-400",
     emerald: "text-emerald-400", rose: "text-rose-400",

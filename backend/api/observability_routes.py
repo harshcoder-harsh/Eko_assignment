@@ -260,22 +260,31 @@ def overview(hours: int = Query(24, ge=1, le=720)):
     avg_latency = round(sum(latencies) / len(latencies), 3) if latencies else 0
 
     # --- generations: token totals + per-model usage
+    # NOTE: client.api.observations.get_many(type="GENERATION") returns
+    # generations WITHOUT model/usage populated (model shows "unknown",
+    # tokens 0). Reading each trace's observations via trace.get() DOES return
+    # them correctly (same path the trace-detail endpoint uses), so we iterate
+    # the recent traces instead. Capped to keep the endpoint responsive.
     total_tokens = 0
     model_usage: dict[str, dict] = {}
-    try:
-        gens = client.api.observations.get_many(
-            type="GENERATION", from_start_time=frm, limit=100
-        )
-        for g in getattr(gens, "data", []) or []:
-            gd = _to_dict(g)
-            tk = _token_total(_first(gd, "usage", "usage_details", "usageDetails"))
+    for d in traces[:25]:
+        tid = _first(d, "id")
+        if not tid:
+            continue
+        try:
+            full = _to_dict(client.api.trace.get(tid))
+        except Exception:
+            continue
+        for o in (full.get("observations") or []):
+            od = _to_dict(o)
+            if (_first(od, "type", default="") or "").upper() != "GENERATION":
+                continue
+            tk = _token_total(_first(od, "usage", "usage_details", "usageDetails"))
             total_tokens += tk
-            model = _first(gd, "model", default="unknown") or "unknown"
+            model = _first(od, "model", default="unknown") or "unknown"
             m = model_usage.setdefault(model, {"calls": 0, "tokens": 0})
             m["calls"] += 1
             m["tokens"] += tk
-    except Exception:
-        pass  # token/model breakdown is best-effort
 
     time_series = [{"hour": h, "count": buckets[h]} for h in sorted(buckets.keys())]
 
