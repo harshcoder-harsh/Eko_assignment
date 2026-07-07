@@ -80,15 +80,13 @@ export default function SupportClawPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleResolve = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-
+  const runResolution = async (text: string) => {
+    if (!text.trim()) return;
     setLoading(true);
     setErrorMessage("");
     setSuccessMessage("");
     try {
-      const res = await handleApiPost(`${api}/support/resolve`, { query: query.trim() });
+      const res = await handleApiPost(`${api}/support/resolve`, { query: text.trim() });
       setActiveRun(res.data);
       if (res.data.run_id) {
         // Instantly load the audit trail for this run
@@ -103,6 +101,11 @@ export default function SupportClawPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleResolve = async (e: React.FormEvent) => {
+    e.preventDefault();
+    runResolution(query);
   };
 
   const loadAuditTrail = async (runId: string) => {
@@ -229,6 +232,25 @@ export default function SupportClawPage() {
                   <p className="text-xs text-white/40 leading-relaxed">
                     Submit customer support cases below. The autonomous Hermes agent will retrieve SOP documents, run classification models, and decide whether to resolve or safely escalate the query.
                   </p>
+                  <div className="mt-6 w-full">
+                    <p className="text-[0.65rem] text-white/30 uppercase tracking-wider font-semibold mb-2.5">Try asking</p>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      {[
+                        { label: "My payment failed", accent: "hover:border-emerald-500/40 hover:text-emerald-300" },
+                        { label: "KYC is pending", accent: "hover:border-blue-500/40 hover:text-blue-300" },
+                        { label: "Production is down", accent: "hover:border-red-500/40 hover:text-red-300" },
+                      ].map((chip) => (
+                        <button
+                          key={chip.label}
+                          onClick={() => runResolution(chip.label)}
+                          disabled={loading}
+                          className={`px-3 py-1.5 rounded-full text-xs bg-white/[0.03] border border-white/[0.1] text-white/60 transition-all disabled:opacity-40 ${chip.accent}`}
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-6">

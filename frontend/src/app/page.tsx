@@ -311,9 +311,9 @@ function HomeContent() {
         >
           {/* Subtle text glow effect behind the title */}
           <div className="absolute inset-0 blur-3xl opacity-20 bg-white z-[-1] rounded-[100%]" />
-          The intelligence of <br className="hidden sm:block" />
+          Autonomous AI agents <br className="hidden sm:block" />
           <span className="text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-white/40 drop-shadow-[0_0_40px_rgba(255,255,255,0.15)] relative inline-block">
-            your documents.
+            for your workflows.
             <motion.span 
               className="absolute -right-8 -top-4"
               animate={{ rotate: [0, 10, 0, -10, 0] }}
@@ -329,7 +329,7 @@ function HomeContent() {
           variants={itemVariants}
           className="text-lg md:text-xl text-white/50 mb-12 max-w-2xl mx-auto leading-[1.7] font-normal tracking-wide"
         >
-          Upload your files instantly — no login. Ask complex questions. Get precise answers backed by exact citations. Zero friction.
+          Document Q&amp;A, analytics agents, and a support-escalation claw — with full observability and audit trails. Multi-tenant, grounded, and built to be inspected.
         </motion.p>
 
         {/* CTA Buttons */}
