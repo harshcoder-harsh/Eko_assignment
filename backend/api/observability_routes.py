@@ -204,7 +204,25 @@ def overview(hours: int = Query(24, ge=1, le=720)):
         resp = client.api.trace.list(limit=100, from_timestamp=frm, order_by="timestamp.desc")
         traces = [_to_dict(t) for t in (getattr(resp, "data", []) or [])]
     except Exception as e:
-        return {"enabled": True, "error": str(e)}
+        # Langfuse slow/unreachable/timed out — degrade to an empty dashboard
+        # (so the UI shows "no runs" instead of spinning forever), and surface
+        # the reason for debugging rather than hanging.
+        return {
+            "enabled": True,
+            "degraded": True,
+            "error": str(e),
+            "window_hours": hours,
+            "total_traces": 0,
+            "avg_latency_s": 0,
+            "p95_latency_s": 0,
+            "total_tokens": 0,
+            "total_cost": 0,
+            "error_count": 0,
+            "error_rate": 0,
+            "states": {},
+            "model_usage": [],
+            "time_series": [],
+        }
 
     latencies = []
     total_cost = 0.0
@@ -242,31 +260,22 @@ def overview(hours: int = Query(24, ge=1, le=720)):
     avg_latency = round(sum(latencies) / len(latencies), 3) if latencies else 0
 
     # --- generations: token totals + per-model usage
-    # --- token totals + per-model usage.
-    # We read this from each trace's own observations (the same source the
-    # trace-detail view uses) rather than observations.get_many, which lags
-    # and reports inconsistently on the Hobby tier. Capped at 20 traces so a
-    # busy window doesn't fan out into too many detail calls.
     total_tokens = 0
     model_usage: dict[str, dict] = {}
-    for d in traces[:20]:
-        tid = _first(d, "id")
-        if not tid:
-            continue
-        try:
-            full = _to_dict(client.api.trace.get(tid))
-        except Exception:
-            continue
-        for o in (full.get("observations") or []):
-            od = _to_dict(o)
-            if (_first(od, "type", default="") or "").upper() not in ("GENERATION", "EMBEDDING"):
-                continue
-            tk = _token_total(_first(od, "usage", "usage_details", "usageDetails"))
+    try:
+        gens = client.api.observations.get_many(
+            type="GENERATION", from_start_time=frm, limit=100
+        )
+        for g in getattr(gens, "data", []) or []:
+            gd = _to_dict(g)
+            tk = _token_total(_first(gd, "usage", "usage_details", "usageDetails"))
             total_tokens += tk
-            model = _first(od, "model", default="unknown") or "unknown"
+            model = _first(gd, "model", default="unknown") or "unknown"
             m = model_usage.setdefault(model, {"calls": 0, "tokens": 0})
             m["calls"] += 1
-            m["tokens"] += tk  # token/model breakdown is best-effort
+            m["tokens"] += tk
+    except Exception:
+        pass  # token/model breakdown is best-effort
 
     time_series = [{"hour": h, "count": buckets[h]} for h in sorted(buckets.keys())]
 

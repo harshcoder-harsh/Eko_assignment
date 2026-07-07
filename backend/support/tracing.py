@@ -76,6 +76,10 @@ def _get_client():
             public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
             secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
             host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+            # Fail fast if Langfuse cloud is slow/unreachable. Without this,
+            # a blocking API call (trace.list / observations.get_many) can hang
+            # a request indefinitely and exhaust the server's threadpool.
+            timeout=int(os.getenv("LANGFUSE_TIMEOUT", "8")),
         )
     except Exception:
         # Package missing, bad keys, network/OTel setup issue — never fatal.
@@ -86,6 +90,7 @@ def _get_client():
 
 def is_enabled() -> bool:
     return _get_client() is not None
+
 
 def get_client():
     """Public accessor for the shared Langfuse client (or None if disabled).
