@@ -1,11 +1,11 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, type Variants } from "framer-motion";
 import Link from "next/link";
-import { ArrowRight, Database, Search, Zap, Sparkles } from "lucide-react";
+import { ArrowRight, LifeBuoy, Activity, Brain, Sparkles } from "lucide-react";
 import { useState, useEffect, Suspense } from "react";
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -13,7 +13,7 @@ const containerVariants = {
   }
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 30, filter: "blur(10px)" },
   visible: {
     opacity: 1,
@@ -23,7 +23,7 @@ const itemVariants = {
   }
 };
 
-const pulseVariants = {
+const pulseVariants: Variants = {
   hidden: { opacity: 0.4, scale: 0.95 },
   visible: {
     opacity: 1,
@@ -365,9 +365,9 @@ function HomeContent() {
         className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto mt-32 relative z-10 w-full px-4"
       >
         {[
-          { icon: Database, title: "Instant Upload", desc: "Drop in PDFs, Docs, TXT, CSV or Excel — or paste a direct link — and start in seconds. No login." },
-          { icon: Zap, title: "LLaMA 3.3 (70B)", desc: "Powered by Groq's LPU inference engine for lightning-fast, high-quality responses." },
-          { icon: Search, title: "Vector Precision", desc: "FAISS vector search ensures the AI always finds the exact paragraph you need." },
+          { icon: LifeBuoy, title: "Support Escalation", desc: "Handles customer queries end-to-end and escalates to a human when confidence drops or the user asks — no dead ends." },
+          { icon: Activity, title: "AI Observability", desc: "Every run traced in-app via Langfuse — latency, token cost and quality visible without leaving FlowClaw." },
+          { icon: Brain, title: "Memory + Context", desc: "Retains conversation context across turns so the agent stays coherent instead of re-asking what it already knows." },
         ].map((feature, idx) => (
           <motion.div 
             key={idx}
