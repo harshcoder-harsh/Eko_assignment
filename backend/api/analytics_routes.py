@@ -14,12 +14,13 @@ import os
 from urllib.parse import urlparse, unquote
 
 import requests
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Depends
 from pydantic import BaseModel
 from typing import Optional
 
 from analytics import data_loader
 from analytics.agents import run_claw, CLAWS
+from auth.security import get_current_user
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -55,12 +56,12 @@ CLAW_CATALOG = [
 
 
 @router.get("/claws")
-def list_claws():
+def list_claws(current=Depends(get_current_user)):
     return {"claws": CLAW_CATALOG}
 
 
 @router.post("/upload")
-async def upload_dataset(file: UploadFile = File(...)):
+async def upload_dataset(file: UploadFile = File(...), current=Depends(get_current_user)):
     try:
         content = await file.read()
         if not content:
@@ -70,7 +71,7 @@ async def upload_dataset(file: UploadFile = File(...)):
 
         user_email = _current_user_email()
         try:
-            meta = data_loader.save_dataset(content, file.filename, user_email, source="upload")
+            meta = data_loader.save_dataset(content, file.filename, current["email"], source="upload", org_id=current["org_id"])
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         return {"status": "success", "dataset": meta}
@@ -87,7 +88,7 @@ class ImportUrlRequest(BaseModel):
 
 
 @router.post("/import-url")
-def import_url(req: ImportUrlRequest):
+def import_url(req: ImportUrlRequest, current=Depends(get_current_user)):
     """Import a dataset from a direct CSV/Excel link (no Google auth needed)."""
     try:
         try:
@@ -116,7 +117,7 @@ def import_url(req: ImportUrlRequest):
                 filename += ".csv"
 
         try:
-            meta = data_loader.save_dataset(content, filename, _current_user_email(), source="url")
+            meta = data_loader.save_dataset(content, filename, current["email"], source="url", org_id=current["org_id"])
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         return {"status": "success", "dataset": meta}
@@ -129,16 +130,16 @@ def import_url(req: ImportUrlRequest):
 
 
 @router.get("/datasets")
-def list_datasets():
+def list_datasets(current=Depends(get_current_user)):
     user_email = _current_user_email()
-    return {"datasets": data_loader.list_datasets(user_email)}
+    return {"datasets": data_loader.list_datasets(current["org_id"])}
 
 
 @router.get("/dataset/{dataset_id}")
-def get_dataset(dataset_id: str):
+def get_dataset(dataset_id: str, current=Depends(get_current_user)):
     user_email = _current_user_email()
     try:
-        meta, df = data_loader.load_dataset(dataset_id, user_email)
+        meta, df = data_loader.load_dataset(dataset_id, current["org_id"])
         profile = data_loader.profile_dataframe(df)
         return {
             "dataset_id": dataset_id,
@@ -155,16 +156,16 @@ def get_dataset(dataset_id: str):
 
 
 @router.delete("/dataset/{dataset_id}")
-def delete_dataset(dataset_id: str):
+def delete_dataset(dataset_id: str, current=Depends(get_current_user)):
     user_email = _current_user_email()
-    ok = data_loader.delete_dataset(dataset_id, user_email)
+    ok = data_loader.delete_dataset(dataset_id, current["org_id"])
     if not ok:
         raise HTTPException(status_code=404, detail="Dataset not found.")
     return {"status": "success"}
 
 
 @router.get("/drive/list")
-def drive_list(folder_url: Optional[str] = None):
+def drive_list(folder_url: Optional[str] = None, current=Depends(get_current_user)):
     try:
         from connectors.gdrive import list_data_files
         items, _ = list_data_files(folder_url=folder_url)
@@ -174,13 +175,13 @@ def drive_list(folder_url: Optional[str] = None):
 
 
 @router.post("/drive/import")
-def drive_import(file_id: str = Query(...)):
+def drive_import(file_id: str = Query(...), current=Depends(get_current_user)):
     try:
         from connectors.gdrive import download_data_file_bytes
         content, name = download_data_file_bytes(file_id)
         user_email = _current_user_email()
         try:
-            meta = data_loader.save_dataset(content, name, user_email, source="gdrive")
+            meta = data_loader.save_dataset(content, name, current["email"], source="gdrive", org_id=current["org_id"])
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         return {"status": "success", "dataset": meta}
@@ -198,12 +199,12 @@ class RunRequest(BaseModel):
 
 
 @router.post("/run")
-def run(req: RunRequest):
+def run(req: RunRequest, current=Depends(get_current_user)):
     if req.claw not in CLAWS:
         raise HTTPException(status_code=400, detail=f"Unknown claw. Available: {', '.join(CLAWS)}")
     user_email = _current_user_email()
     try:
-        result = run_claw(req.claw, req.dataset_id, user_email)
+        result = run_claw(req.claw, req.dataset_id, current["org_id"])
         return {"status": "success", "result": result}
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))

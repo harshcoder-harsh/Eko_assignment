@@ -9,9 +9,10 @@ show a "connect Langfuse" empty state instead of a crash.
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 
 from support import tracing
+from auth.security import get_current_user
 
 router = APIRouter(prefix="/observability", tags=["observability"])
 
@@ -72,13 +73,14 @@ def _state_from_output(output) -> str | None:
 # Endpoints
 # ---------------------------------------------------------------------------
 @router.get("/status")
-def observability_status():
+def observability_status(current=Depends(get_current_user)):
     """Whether the in-app dashboard has a live Langfuse connection."""
     return {"enabled": tracing.is_enabled()}
 
 
 @router.get("/traces")
 def list_traces(
+    current=Depends(get_current_user),
     limit: int = Query(50, ge=1, le=100),
     hours: int = Query(168, ge=1, le=720),
     name: str | None = None,
@@ -113,7 +115,7 @@ def list_traces(
 
 
 @router.get("/trace/{trace_id}")
-def trace_detail(trace_id: str):
+def trace_detail(trace_id: str, current=Depends(get_current_user)):
     """Full detail for one run: the span timeline, the model's reasoning
     (draft output), the documents each retriever span pulled, and token/cost.
     """
@@ -188,7 +190,7 @@ def trace_detail(trace_id: str):
 
 
 @router.get("/overview")
-def overview(hours: int = Query(24, ge=1, le=720)):
+def overview(hours: int = Query(24, ge=1, le=720), current=Depends(get_current_user)):
     """Aggregate metrics for the dashboard header: volume, latency, tokens,
     cost, errors, model usage, workflow-state breakdown, and a per-hour
     volume series for the traffic chart. Computed from recent traces +

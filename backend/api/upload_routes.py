@@ -11,7 +11,7 @@ from datetime import datetime
 from urllib.parse import urlparse, unquote
 
 import requests
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel
 
 from processing.parser import process_single_file
@@ -19,6 +19,7 @@ from embedding.embedder import embed_chunks
 from search.vector_store import load_faiss_index, add_chunks_to_index, save_faiss_index
 from connectors.gdrive import current_user_email, SYNC_DIR
 from db import files_collection
+from auth.security import get_current_user
 
 router = APIRouter(tags=["documents"])
 
@@ -96,7 +97,7 @@ def _ingest_document(content: bytes, filename: str, user_email: str, source: str
 
 
 @router.post("/documents/upload")
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(file: UploadFile = File(...), current=Depends(get_current_user)):
     try:
         content = await file.read()
         if not content:
@@ -121,7 +122,7 @@ class DocUrlRequest(BaseModel):
 
 
 @router.post("/documents/import-url")
-def import_document_url(req: DocUrlRequest):
+def import_document_url(req: DocUrlRequest, current=Depends(get_current_user)):
     try:
         content = _download(req.url)
         filename = _filename_from_url(req.url)

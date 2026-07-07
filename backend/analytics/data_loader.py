@@ -218,7 +218,7 @@ def profile_dataframe(df: pd.DataFrame, preview_rows: int = 8):
     }
 
 
-def save_dataset(content: bytes, filename: str, user_email: str, source: str = "upload"):
+def save_dataset(content: bytes, filename: str, user_email: str, source: str = "upload", org_id: str = None):
     """Persist an uploaded dataset, clean it, store cleaned copy + metadata.
 
     Returns the dataset metadata dict (including profile).
@@ -252,6 +252,7 @@ def save_dataset(content: bytes, filename: str, user_email: str, source: str = "
     meta = {
         "dataset_id": dataset_id,
         "user_email": user_email,
+        "org_id": org_id,
         "name": filename,
         "path": clean_path,
         "stored_as": stored_as,
@@ -274,17 +275,15 @@ def save_dataset(content: bytes, filename: str, user_email: str, source: str = "
     return json_safe(result)
 
 
-def load_dataset(dataset_id: str, user_email: str = None):
-    """Load (metadata, DataFrame) for a stored dataset."""
+def load_dataset(dataset_id: str, org_id: str = None):
+    """Load (metadata, DataFrame) for a stored dataset, scoped to the org."""
     coll = _datasets_collection()
-    query = {"dataset_id": dataset_id}
-    meta = coll.find_one(query)
+    meta = coll.find_one({"dataset_id": dataset_id})
     if not meta:
         raise ValueError("Dataset not found.")
-    if user_email and meta.get("user_email") and meta.get("user_email") != user_email:
-        # Soft ownership check; default_user datasets are shared.
-        if meta.get("user_email") != "default_user":
-            raise ValueError("Dataset not found.")
+    # Cross-org access is indistinguishable from "not found".
+    if org_id is not None and meta.get("org_id") != org_id:
+        raise ValueError("Dataset not found.")
     path = meta.get("path")
     if not path or not os.path.exists(path):
         raise ValueError("Dataset file is missing on the server. Please re-upload.")
@@ -305,11 +304,9 @@ def load_dataset(dataset_id: str, user_email: str = None):
     return meta, df
 
 
-def list_datasets(user_email: str):
+def list_datasets(org_id: str):
     coll = _datasets_collection()
-    docs = list(coll.find({"user_email": user_email}))
-    if not docs and user_email != "default_user":
-        docs = list(coll.find({"user_email": "default_user"}))
+    docs = list(coll.find({"org_id": org_id}))
     out = []
     for d in docs:
         out.append({
@@ -324,10 +321,10 @@ def list_datasets(user_email: str):
     return out
 
 
-def delete_dataset(dataset_id: str, user_email: str):
+def delete_dataset(dataset_id: str, org_id: str):
     coll = _datasets_collection()
     meta = coll.find_one({"dataset_id": dataset_id})
-    if not meta:
+    if not meta or (org_id is not None and meta.get("org_id") != org_id):
         return False
     path = meta.get("path")
     if path and os.path.exists(path):
