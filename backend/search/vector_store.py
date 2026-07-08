@@ -159,8 +159,6 @@ def search_faiss(query, k=5, filters=None, org_id=None):
 
     elif filters or org_id:
         search_k = min(index.ntotal, max(k * 25, 250))
-    elif filters:
-        search_k = min(index.ntotal, max(k * 25, 250))
     else:
         search_k = min(k, index.ntotal)
 

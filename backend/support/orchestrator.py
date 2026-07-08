@@ -6,10 +6,27 @@ from support.escalation import should_escalate, is_unresolved
 from support.ticket_store import create_ticket, ESCALATED, OPEN, RESOLVED
 from support import audit
 from support import tracing
-from mem0 import MemoryClient
 import os
 
-mem0_client = MemoryClient(api_key=os.getenv("MEM0_API_KEY"))
+_mem0_client = None
+_mem0_initialised = False
+
+
+def _get_mem0():
+    """Lazily build the mem0 client. Returns None if MEM0_API_KEY is unset or
+    construction fails, so import never breaks and memory degrades to a no-op."""
+    global _mem0_client, _mem0_initialised
+    if _mem0_initialised:
+        return _mem0_client
+    _mem0_initialised = True
+    if not os.getenv("MEM0_API_KEY"):
+        return None
+    try:
+        from mem0 import MemoryClient
+        _mem0_client = MemoryClient(api_key=os.getenv("MEM0_API_KEY"))
+    except Exception:
+        _mem0_client = None
+    return _mem0_client
 
 
 def run_support_workflow(query: str, user_email: str = "default_user", org_id: str = None) -> dict:
@@ -39,11 +56,12 @@ def run_support_workflow(query: str, user_email: str = "default_user", org_id: s
             "memory_retrieve", as_type="retriever", input={"query": query}
         ) as span:
             try:
-                search_result = mem0_client.search(
+                client = _get_mem0()
+                search_result = client.search(
                     query=query,
                     filters={"user_id": user_email},
                     limit=5
-                )
+                ) if client else []
                 if isinstance(search_result, dict):
                     memories_list = search_result.get('results', [])
                 elif isinstance(search_result, list):
@@ -187,20 +205,22 @@ def run_support_workflow(query: str, user_email: str = "default_user", org_id: s
         # Step 6: Save memory
         with tracing.observation("memory_save") as span:
             try:
-                mem0_client.add(
-                    messages=[
-                        {"role": "user", "content": query},
-                        {"role": "assistant", "content": draft}
-                    ],
-                    user_id=user_email,
-                    metadata={
-                        "issue_type": classification["issue_type"],
-                        "severity": classification["severity"],
-                        "state": final_state,
-                        "ticket_id": ticket["ticket_id"] if ticket else None,
-                        "run_id": run_id
-                    }
-                )
+                client = _get_mem0()
+                if client:
+                    client.add(
+                        messages=[
+                            {"role": "user", "content": query},
+                            {"role": "assistant", "content": draft}
+                        ],
+                        user_id=user_email,
+                        metadata={
+                            "issue_type": classification["issue_type"],
+                            "severity": classification["severity"],
+                            "state": final_state,
+                            "ticket_id": ticket["ticket_id"] if ticket else None,
+                            "run_id": run_id
+                        }
+                    )
                 span.update(output={"saved": True})
             except Exception as e:
                 span.update(
