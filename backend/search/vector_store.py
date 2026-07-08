@@ -127,7 +127,7 @@ def add_to_faiss(new_chunks):
     add_chunks_to_index(index, new_chunks)
     save_faiss_index(index)
 
-def search_faiss(query, k=5, filters=None):
+def search_faiss(query, k=5, filters=None, org_id=None):
     from embedding.embedder import model
     index = load_faiss_index()
     chunks = load_chunks()
@@ -139,6 +139,8 @@ def search_faiss(query, k=5, filters=None):
         wanted = filters["doc_id"]
         doc_chunks = []
         for chunk in chunks:
+            if org_id is not None and chunk.get("org_id") != org_id:
+                continue
             base_doc_id = chunk["doc_id"].split('_chunk_')[0] if '_chunk_' in chunk["doc_id"] else chunk["doc_id"]
             if base_doc_id == wanted:
                 doc_chunks.append(chunk)
@@ -155,8 +157,8 @@ def search_faiss(query, k=5, filters=None):
             sampled.extend(doc_chunks[-(k - len(sampled)):])
         return sampled[:k]
 
-    if filters and isinstance(filters, dict) and filters.get("doc_id"):
-        search_k = min(index.ntotal, max(k * 100, 1000))
+    elif filters or org_id:
+        search_k = min(index.ntotal, max(k * 25, 250))
     elif filters:
         search_k = min(index.ntotal, max(k * 25, 250))
     else:
@@ -169,6 +171,8 @@ def search_faiss(query, k=5, filters=None):
     for i in indices[0]:
         if i < len(chunks) and i != -1:
             chunk = chunks[i]
+            if org_id is not None and chunk.get("org_id") != org_id:
+                continue
             if filters:
                 if isinstance(filters, dict) and filters.get("doc_id"):
                     base_doc_id = chunk["doc_id"].split('_chunk_')[0] if '_chunk_' in chunk["doc_id"] else chunk["doc_id"]

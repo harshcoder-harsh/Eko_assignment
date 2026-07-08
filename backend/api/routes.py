@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -10,6 +10,7 @@ from search.vector_store import add_to_faiss, search_faiss, get_document_metadat
 from groq import Groq
 import os
 import hashlib
+from auth.security import get_current_user
 
 router = APIRouter()
 
@@ -18,7 +19,7 @@ llm_cache = {}
 oauth_states = {}
 
 @router.get("/documents")
-def list_documents():
+def list_documents(current=Depends(get_current_user)):
     try:
         from connectors.gdrive import get_drive_service
         try:
@@ -28,7 +29,7 @@ def list_documents():
         except Exception:
             user_email = "default_user"
 
-        docs = list(files_collection.find({"user_email": user_email}))
+        docs = list(files_collection.find({"org_id": current["org_id"]}))
         doc_ids = set()
         for d in docs:
             fid = d.get("file_id") or d.get("id")
@@ -560,7 +561,7 @@ def sync_drive_endpoint(background_tasks: BackgroundTasks, force: Optional[bool]
         raise HTTPException(status_code=500, detail=error_msg)
 
 @router.post("/ask", response_model=AskResponse)
-def ask_endpoint(req: AskRequest):
+def ask_endpoint(req: AskRequest, current=Depends(get_current_user)):
     try:
         from connectors.gdrive import get_drive_service
         try:
@@ -621,7 +622,7 @@ def ask_endpoint(req: AskRequest):
                 
         top_k = 12 if is_summary_request else 8
 
-        top_chunks = search_faiss(faiss_query, k=top_k, filters=filter_metadata)
+        top_chunks = search_faiss(faiss_query, k=top_k, filters=filter_metadata, org_id=current["org_id"])
         
         if not top_chunks:
             if is_summary_request:

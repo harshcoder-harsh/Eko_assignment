@@ -54,7 +54,7 @@ def _filename_from_url(url: str) -> str:
     return name
 
 
-def _ingest_document(content: bytes, filename: str, user_email: str, source: str):
+def _ingest_document(content: bytes, filename: str, user_email: str, source: str, org_id: str = None):
     ext = os.path.splitext(filename)[1].lower()
     if ext not in SUPPORTED_DOC_EXT:
         raise ValueError(f"Unsupported file type '{ext or 'none'}'. Supported: {', '.join(sorted(SUPPORTED_DOC_EXT))}")
@@ -72,6 +72,7 @@ def _ingest_document(content: bytes, filename: str, user_email: str, source: str
         {"user_email": user_email, "file_id": doc_id},
         {"$set": {
             "user_email": user_email,
+            "org_id": org_id,
             "file_id": doc_id,
             "name": filename,
             "path": path,
@@ -89,6 +90,8 @@ def _ingest_document(content: bytes, filename: str, user_email: str, source: str
         raise ValueError("No readable text could be extracted from this file.")
 
     embedded = embed_chunks(chunks)
+    for c in embedded:
+        c["org_id"] = org_id
     index = load_faiss_index()
     add_chunks_to_index(index, embedded)
     save_faiss_index(index)
@@ -105,7 +108,7 @@ async def upload_document(file: UploadFile = File(...), current=Depends(get_curr
         if len(content) > MAX_BYTES:
             raise HTTPException(status_code=400, detail="File too large (max 25 MB).")
         try:
-            doc = _ingest_document(content, file.filename, current_user_email(), "upload")
+            doc = _ingest_document(content, file.filename, current["email"], "upload", org_id=current["org_id"])
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         return {"status": "success", "document": doc}
@@ -127,7 +130,7 @@ def import_document_url(req: DocUrlRequest, current=Depends(get_current_user)):
         content = _download(req.url)
         filename = _filename_from_url(req.url)
         try:
-            doc = _ingest_document(content, filename, current_user_email(), "url")
+            doc = _ingest_document(content, filename, current["email"], "url", org_id=current["org_id"])
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         return {"status": "success", "document": doc}
