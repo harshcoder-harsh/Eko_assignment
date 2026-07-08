@@ -52,6 +52,12 @@ def finish_run(run_id: str, final_state: str):
 def get_run(run_id: str) -> dict:
     return audit_collection.find_one({"run_id": run_id})
 
+def get_run_by_ticket(ticket_id: str) -> dict:
+    """Find the run whose TICKETED event created this ticket_id."""
+    return audit_collection.find_one({
+        "events": {"$elemMatch": {"step": "TICKETED", "detail.ticket_id": ticket_id}}
+    })
+
 
 def list_runs(user_email: str = None, org_id: str = None) -> list:
     query = {}

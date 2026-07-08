@@ -73,7 +73,7 @@ def resolve_ticket_route(ticket_id: str, current=Depends(require_role(*_OPERATOR
 
 @router.get("/audit/{run_id}")
 def get_audit_run(run_id: str, current=Depends(get_current_user)):
-    run = audit.get_run(run_id)
+    run = audit.get_run(run_id) or audit.get_run_by_ticket(run_id)
     if not run or run.get("org_id") != current["org_id"]:
         raise HTTPException(status_code=404, detail="Run not found")
     run.pop("_id", None)
