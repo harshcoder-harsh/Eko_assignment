@@ -358,23 +358,19 @@ def disconnect_drive_endpoint(current=Depends(get_current_user)):
         token_file = "token.json"
         states_file = "oauth_states.json"
         
-        # Remove token.json to force re-authentication
+        # Remove the Drive connection (token/state) — connection only, not shared data.
         if os.path.exists(token_file):
             os.remove(token_file)
-            
-        # Clean up local files
-        sync_dir = "synced_docs"
-        if os.path.exists(sync_dir):
-            for f in os.listdir(sync_dir):
-                fp = os.path.join(sync_dir, f)
-                if os.path.isfile(fp):
-                    os.remove(fp)
-            
-        # Remove old states
         if os.path.exists(states_file):
             os.remove(states_file)
-            
-        return {"status": "success", "message": "Successfully disconnected. You can now sync with a new account."}
+
+        # Org-scoped data cleanup: drop only this org's docs + indexed chunks.
+        files_collection.delete_many({"org_id": current["org_id"]})
+        from search.vector_store import remove_org_from_index
+        remove_org_from_index(current["org_id"])
+
+        return {"status": "success", "message": "Disconnected. Your synced documents were removed."}
+        
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -488,30 +484,9 @@ def sync_drive_endpoint(background_tasks: BackgroundTasks, force: Optional[bool]
             raise Exception("No token.json found. Please login to Google Drive first.")
             
         if force:
-            from connectors.gdrive import get_drive_service
-            service = get_drive_service()
-            try:
-                about = service.about().get(fields="user").execute()
-                user_email = about['user']['emailAddress']
-                files_collection.delete_many({"user_email": user_email})
-            except Exception as e:
-                print(f"Failed to get user email for force sync: {e}")
-                
-            # Clear FAISS index as well
-            if os.path.exists("synced_docs/faiss.index"):
-                os.remove("synced_docs/faiss.index")
-            if os.path.exists("synced_docs/chunks.json"):
-                os.remove("synced_docs/chunks.json")
-            if os.path.exists("synced_docs/chunks.jsonl"):
-                os.remove("synced_docs/chunks.jsonl")
-                
-            # Clear local files
-            sync_dir = "synced_docs"
-            if os.path.exists(sync_dir):
-                for f in os.listdir(sync_dir):
-                    fp = os.path.join(sync_dir, f)
-                    if os.path.isfile(fp):
-                        os.remove(fp)
+            files_collection.delete_many({"org_id": current["org_id"]})
+            from search.vector_store import remove_org_from_index
+            remove_org_from_index(current["org_id"])
                 
         items, user_email = get_files_to_sync(page_size=20, force=bool(force), folder_url=folder_url)
         if not items:

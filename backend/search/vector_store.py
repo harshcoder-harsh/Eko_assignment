@@ -216,3 +216,23 @@ def get_document_metadata(doc_id):
             "modifiedTime": doc.get("modifiedTime")
         }
     return None
+
+def remove_org_from_index(org_id):
+    """Drop one org's chunks and rebuild the shared FAISS index + chunk store,
+    reusing existing embeddings via reconstruct (no re-embedding)."""
+    index = load_faiss_index()
+    chunks = load_chunks()
+    if not chunks or index.ntotal == 0:
+        return 0
+    new_index = faiss.IndexFlatIP(DIMENSION)
+    remaining, vectors = [], []
+    for i, c in enumerate(chunks):
+        if c.get("org_id") == org_id or i >= index.ntotal:
+            continue
+        vectors.append(index.reconstruct(i))
+        remaining.append(c)
+    if vectors:
+        new_index.add(np.array(vectors).astype("float32"))
+    save_faiss_index(new_index)
+    save_chunks(remaining)
+    return len(chunks) - len(remaining)
