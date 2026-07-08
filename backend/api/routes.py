@@ -124,7 +124,7 @@ def auth_login():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/storage/stats")
-def get_storage_stats():
+def get_storage_stats(current=Depends(get_current_user)):
     try:
         from search.vector_store import load_faiss_index, load_chunks
         from db import files_collection
@@ -169,17 +169,16 @@ def get_storage_stats():
                     docs_size_bytes += os.path.getsize(fp)
                     docs_count += 1
 
-        docs_synced = 0
-        if user_email:
-            try:
-                docs_synced = files_collection.count_documents({"user_email": user_email})
-            except Exception:
-                docs_synced = 0
+        ddocs_synced = 0
+        try:
+            docs_synced = files_collection.count_documents({"org_id": current["org_id"]})
+        except Exception:
+            docs_synced = 0
 
         indexed_doc_ids = set()
-        if user_email and chunks:
+        if chunks:
             try:
-                user_docs = list(files_collection.find({"user_email": user_email}))
+                user_docs = list(files_collection.find({"org_id": current["org_id"]}))
                 user_doc_ids = set()
                 for d in user_docs:
                     fid = d.get("file_id") or d.get("id")
@@ -235,34 +234,19 @@ def get_storage_stats():
             "eta_seconds": None
         }
 @router.get("/chat/history")
-def get_chat_history():
+def get_chat_history(current=Depends(get_current_user)):
     try:
-        from connectors.gdrive import get_drive_service
-        try:
-            service = get_drive_service()
-            about = service.about().get(fields="user").execute()
-            user_email = about['user']['emailAddress']
-        except Exception:
-            # If get_drive_service fails (e.g. not logged in), just return empty
-            return {"history": []}
-            
-        cursor = chats_collection.find({"user_email": user_email})
-        # Try to sort, but handle if it's the mock collection which doesn't sort well
+        cursor = chats_collection.find({"user_email": current["email"], "org_id": current["org_id"]})
         try:
             cursor = cursor.sort("timestamp", 1)
         except Exception:
             pass
         history = []
         for chat in cursor:
-            # Format to match frontend Message interface
-            msg = {
-                "role": chat["role"],
-                "content": chat["content"]
-            }
+            msg = {"role": chat["role"], "content": chat["content"]}
             if chat.get("sources"):
                 msg["sources"] = chat["sources"]
             history.append(msg)
-            
         return {"history": history}
     except Exception as e:
         import traceback
@@ -331,7 +315,7 @@ def auth_callback(state: str, code: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/chat")
-def clear_chat():
+def clear_chat(current=Depends(get_current_user)):
     try:
         from connectors.gdrive import get_drive_service
         try:
@@ -342,7 +326,7 @@ def clear_chat():
             print(f"Error getting user email for clear chat: {e}")
             user_email = "default_user"
             
-        result = chats_collection.delete_many({"user_email": user_email})
+        result = chats_collection.delete_many({"user_email": current["email"], "org_id": current["org_id"]})
         deleted_count = result.deleted_count if hasattr(result, 'deleted_count') else 0
         print(f"Cleared {deleted_count} chat messages for user: {user_email}")
         return {"status": "success", "message": f"Chat history cleared. Deleted {deleted_count} messages."}
@@ -369,7 +353,7 @@ from db import files_collection, chats_collection
 from datetime import datetime
 
 @router.post("/disconnect-drive")
-def disconnect_drive_endpoint():
+def disconnect_drive_endpoint(current=Depends(get_current_user)):
     try:
         token_file = "token.json"
         states_file = "oauth_states.json"
@@ -585,7 +569,8 @@ def ask_endpoint(req: AskRequest, current=Depends(get_current_user)):
 
         # Save user query to MongoDB
         chats_collection.insert_one({
-            "user_email": user_email,
+            "user_email": current["email"],
+            "org_id": current["org_id"],
             "role": "user",
             "content": req.query,
             "timestamp": datetime.utcnow()
@@ -665,7 +650,7 @@ def ask_endpoint(req: AskRequest, current=Depends(get_current_user)):
         context_block = "\n\n---\n\n".join(context_parts)
         
         # Build chat history for Groq
-        cursor = chats_collection.find({"user_email": user_email})
+        cursor = chats_collection.find({"user_email": current["email"], "org_id": current["org_id"]})
         try:
             cursor = cursor.sort("timestamp", 1)
         except Exception:
@@ -733,7 +718,8 @@ Question:
 
         # Save AI response to MongoDB
         chats_collection.insert_one({
-            "user_email": user_email,
+            "user_email": current["email"],
+            "org_id": current["org_id"],
             "role": "ai",
             "content": answer,
             "sources": [s.dict() for s in sources],
