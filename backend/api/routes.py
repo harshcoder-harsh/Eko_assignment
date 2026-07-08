@@ -400,7 +400,7 @@ def disconnect_drive_endpoint():
 active_syncs = set()
 sync_progress = {}
 
-def background_sync_process(items, user_email):
+def background_sync_process(items, user_email, org_id=None):
     try:
         active_syncs.add(user_email)
         import time
@@ -417,7 +417,7 @@ def background_sync_process(items, user_email):
             "error": None
         }
 
-        downloaded_files = download_items(items, user_email)
+        downloaded_files = download_items(items, user_email, org_id)
         sync_progress[user_email]["files_downloaded"] = len(downloaded_files)
         sync_progress[user_email]["updated_at"] = time.time()
         if not downloaded_files:
@@ -449,6 +449,8 @@ def background_sync_process(items, user_email):
                 sync_progress[user_email]["stage"] = "embedding"
                 sync_progress[user_email]["updated_at"] = time.time()
                 embedded_chunks = embed_chunks(pending_chunks)
+                for c in embedded_chunks:
+                    c["org_id"] = org_id
                 sync_progress[user_email]["stage"] = "indexing"
                 add_chunks_to_index(index, embedded_chunks)
                 sync_progress[user_email]["chunks_indexed"] = sync_progress[user_email].get("chunks_indexed", 0) + len(embedded_chunks)
@@ -460,6 +462,8 @@ def background_sync_process(items, user_email):
             sync_progress[user_email]["stage"] = "embedding"
             sync_progress[user_email]["updated_at"] = time.time()
             embedded_chunks = embed_chunks(pending_chunks)
+            for c in embedded_chunks:
+                c["org_id"] = org_id
             sync_progress[user_email]["stage"] = "indexing"
             add_chunks_to_index(index, embedded_chunks)
             sync_progress[user_email]["chunks_indexed"] = sync_progress[user_email].get("chunks_indexed", 0) + len(embedded_chunks)
@@ -491,7 +495,7 @@ def background_sync_process(items, user_email):
         active_syncs.discard(user_email)
 
 @router.post("/sync-drive")
-def sync_drive_endpoint(background_tasks: BackgroundTasks, force: Optional[bool] = False, folder_url: Optional[str] = None):
+def sync_drive_endpoint(background_tasks: BackgroundTasks, force: Optional[bool] = False, folder_url: Optional[str] = None, current=Depends(get_current_user)):
     try:
         import time
         start_time = time.time()
@@ -541,7 +545,7 @@ def sync_drive_endpoint(background_tasks: BackgroundTasks, force: Optional[bool]
             "files_processed": 0,
             "chunks_indexed": 0
         }
-        background_tasks.add_task(background_sync_process, items, user_email)
+        background_tasks.add_task(background_sync_process, items, user_email, current["org_id"])
 
         return {
             "status": "success",

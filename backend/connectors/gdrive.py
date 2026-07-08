@@ -64,7 +64,7 @@ def get_drive_service():
     # Just use the default build which automatically handles credentials
     return build('drive', 'v3', credentials=creds)
 
-def download_file(service, file_id, file_name, mime_type, modified_time, synced_files, user_email):
+def download_file(service, file_id, file_name, mime_type, modified_time, synced_files, user_email, org_id=None):
     request = None
     if mime_type == 'application/vnd.google-apps.document':
         request = service.files().export_media(fileId=file_id, mimeType='application/pdf')
@@ -88,6 +88,7 @@ def download_file(service, file_id, file_name, mime_type, modified_time, synced_
         from db import files_collection
         doc = {
             "user_email": user_email,
+            "org_id": org_id,
             "file_id": file_id,
             "name": file_name,
             "path": file_path,
@@ -156,7 +157,7 @@ def get_files_to_sync(page_size: int = 10, force: bool = False, folder_url: str 
 
     return to_download, user_email
 
-def download_items(items, user_email):
+def download_items(items, user_email, org_id=None):
     if not items:
         return []
 
@@ -177,7 +178,7 @@ def download_items(items, user_email):
         mime_type = item['mimeType']
         modified_time = item['modifiedTime']
         print(f"Downloading {file_name}...")
-        return download_file(service, file_id, file_name, mime_type, modified_time, synced_files, user_email)
+        return download_file(service, file_id, file_name, mime_type, modified_time, synced_files, user_email, org_id)
 
     downloaded = []
     if max_workers == 1 or len(items) == 1:
