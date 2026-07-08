@@ -123,7 +123,7 @@ export default function AnalyticsPage() {
         </Link>
 
         <div className="p-5 border-b border-white/[0.06] space-y-3">
-          <p className="text-white/40 text-[0.75rem] leading-relaxed">Upload a CSV / Excel file, or paste a direct link to one. No login required.</p>
+        <p className="text-white/40 text-[0.75rem] leading-relaxed">Upload a CSV / Excel file, or paste a direct link to one.</p>
           <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.tsv" className="hidden"
             onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} />
           <button onClick={() => fileRef.current?.click()} disabled={uploading}

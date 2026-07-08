@@ -35,7 +35,7 @@ _EXT_MIME = {
 
 def _download(url: str) -> bytes:
     try:
-        resp = requests.get(url, timeout=30, stream=True, headers={"User-Agent": "Highwatch-RAG/1.0"})
+        resp = requests.get(url, timeout=30, stream=True, headers={"User-Agent": "FlowClaw-RAG/1.0"})
         resp.raise_for_status()
     except requests.RequestException as e:
         raise ValueError(f"Could not fetch URL: {e}")

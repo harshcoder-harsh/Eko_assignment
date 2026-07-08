@@ -58,7 +58,17 @@ def run_support_workflow(query: str, user_email: str = "default_user", org_id: s
                             memory_context += f"- {mem.get('memory', str(mem))}\n"
                         else:
                             memory_context += f"- {str(mem)}\n"
-
+                # Chronological transcript recall from the org+user-scoped audit log.
+                try:
+                    recent = audit.list_runs(user_email=user_email, org_id=org_id)
+                    recent = sorted(recent, key=lambda r: r.get("started_at") or "", reverse=True)
+                    prior = [r.get("query") for r in recent if r.get("run_id") != run_id][:5]
+                    if prior:
+                        memory_context += "\nRecent queries (most recent first):\n"
+                        for q in prior:
+                            memory_context += f"- {q}\n"
+                except Exception:
+                    pass
                 audit.log_event(run_id, "MEMORY_RETRIEVED", {
                     "memories_found": len(memories_list),
                     "context": memory_context

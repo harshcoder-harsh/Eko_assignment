@@ -144,7 +144,7 @@ try:
     client.server_info()
     
     print("Successfully connected to MongoDB!")
-    db = client.highwatch
+    db = client[os.getenv("MONGO_DB_NAME", "flowclaw")]
     files_collection = db.files
     chats_collection = db.chats
     USING_MONGO = True

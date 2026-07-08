@@ -74,8 +74,8 @@ def auth_status():
 @router.get("/auth/login")
 def auth_login():
     try:
-        FRONTEND_URL = os.getenv("FRONTEND_URL", "https://hiighwatch-rag.vercel.app")
-        API_URL = os.getenv("API_URL", "https://hiighwatch-rag-3cdc.onrender.com")
+        FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
         
         # We store the oauth state in a JSON file to survive FastAPI hot reloads
         # IMPORTANT: explicitly request access_type='offline' AND prompt='consent'
@@ -256,8 +256,8 @@ def get_chat_history(current=Depends(get_current_user)):
 @router.get("/auth/callback")
 def auth_callback(state: str, code: str):
     try:
-        FRONTEND_URL = os.getenv("FRONTEND_URL", "https://hiighwatch-rag.vercel.app")
-        API_URL = os.getenv("API_URL", "https://hiighwatch-rag-3cdc.onrender.com")
+        FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
         
         import json
         states_file = "oauth_states.json"
@@ -632,7 +632,7 @@ def ask_endpoint(req: AskRequest, current=Depends(get_current_user)):
             pass
         chat_history_list = list(cursor)[-6:]
         
-        system_prompt = """You are Highwatch, an advanced, highly intelligent conversational AI assistant (similar to ChatGPT) integrated directly into the user's Google Drive. 
+        system_prompt = """You are FlowClaw, an advanced, highly intelligent conversational AI assistant (similar to ChatGPT) integrated directly into the user's Google Drive. 
 Your primary goal is to help the user understand, analyze, and extract insights from their synced documents.
 
 Rules:

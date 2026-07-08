@@ -70,7 +70,7 @@ export function SyncPanel({ onSyncSuccess }: { onSyncSuccess: (docs: { id: strin
   return (
     <div className="flex flex-col gap-3 relative">
       <p className="text-white/40 text-[0.75rem] leading-relaxed font-normal px-1 mb-1">
-        Upload a PDF, DOCX or TXT to chat with it, or paste a direct file link. No login required.
+      Upload a PDF, DOCX or TXT to chat with it, or paste a direct file link.
       </p>
 
       <div className="rounded-xl bg-white/[0.03] border border-white/[0.07] p-3 flex flex-col gap-2.5">

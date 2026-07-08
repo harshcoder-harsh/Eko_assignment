@@ -92,7 +92,7 @@ def import_url(req: ImportUrlRequest, current=Depends(get_current_user)):
     """Import a dataset from a direct CSV/Excel link (no Google auth needed)."""
     try:
         try:
-            resp = requests.get(req.url, timeout=30, stream=True, headers={"User-Agent": "Highwatch-RAG/1.0"})
+            resp = requests.get(req.url, timeout=30, stream=True, headers={"User-Agent": "FlowClaw-RAG/1.0"})
             resp.raise_for_status()
         except requests.RequestException as e:
             raise HTTPException(status_code=400, detail=f"Could not fetch URL: {e}")

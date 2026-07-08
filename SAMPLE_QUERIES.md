@@ -1,4 +1,4 @@
-# Sample Queries and Outputs for Highwatch AI RAG System
+# Sample Queries and Outputs for FlowClaw AI RAG System
 
 Here are examples of how the system handles different types of questions, from simple data retrieval to complex document summarization.
 
