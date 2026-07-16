@@ -41,8 +41,17 @@ def run_support_workflow(query: str, user_email: str = "default_user", org_id: s
         "run_support_workflow",
         as_type="agent",
         input={"query": query},
-        metadata={"run_id": run_id, "user_email": user_email},
+        metadata={"run_id": run_id, "user_email": user_email, "org_id": org_id},
     ) as root:
+        # Stamp tenant identity on the *trace* itself (not just observation
+        # metadata): user_id and tags are trace-level, filterable fields in
+        # Langfuse, which the observability API uses to scope reads per org.
+        # Observation metadata is NOT filterable via trace.list. No-op when
+        # tracing is disabled (_NoopSpan.update_trace).
+        root.update_trace(
+            user_id=user_email,
+            tags=[f"org:{org_id}"] if org_id else [],
+        )
 
         # Step 1: Classify
         with tracing.observation("classify", input={"query": query}) as span:

@@ -9,12 +9,20 @@ show a "connect Langfuse" empty state instead of a crash.
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, HTTPException
 
 from support import tracing
 from auth.security import get_current_user
 
 router = APIRouter(prefix="/observability", tags=["observability"])
+
+
+def _org_tag(current: dict) -> str:
+    """The tenant tag stamped on every trace at write time (see
+    orchestrator.run_support_workflow). All reads below filter on it so one
+    org can never see another org's traces — same isolation convention as
+    tickets and audit runs."""
+    return f"org:{current.get('org_id')}"
 
 
 # ---------------------------------------------------------------------------
@@ -84,8 +92,14 @@ def list_traces(
     limit: int = Query(50, ge=1, le=100),
     hours: int = Query(168, ge=1, le=720),
     name: str | None = None,
+    mine_only: bool = False,
 ):
-    """Recent traces (most recent first) with the headline metrics per run."""
+    """Recent traces (most recent first) with the headline metrics per run.
+
+    Scoped to the caller's org via the org tag; `mine_only` narrows further
+    to the caller's own runs (trace user_id = email), mirroring the
+    tickets/audit API.
+    """
     client = tracing.get_client()
     if client is None:
         return {"enabled": False, "traces": []}
@@ -93,7 +107,12 @@ def list_traces(
     frm = datetime.now(timezone.utc) - timedelta(hours=hours)
     try:
         resp = client.api.trace.list(
-            limit=limit, from_timestamp=frm, order_by="timestamp.desc", name=name
+            limit=limit,
+            from_timestamp=frm,
+            order_by="timestamp.desc",
+            name=name,
+            tags=[_org_tag(current)],
+            user_id=current["email"] if mine_only else None,
         )
     except Exception as e:
         return {"enabled": True, "error": str(e), "traces": []}
@@ -127,6 +146,12 @@ def trace_detail(trace_id: str, current=Depends(get_current_user)):
         t = _to_dict(client.api.trace.get(trace_id))
     except Exception as e:
         return {"enabled": True, "error": str(e)}
+
+    # Tenant isolation: the trace must carry the caller's org tag (stamped at
+    # write time). Cross-org access is indistinguishable from "not found" so
+    # trace IDs can't be probed across orgs — same convention as tickets.
+    if _org_tag(current) not in (t.get("tags") or []):
+        raise HTTPException(status_code=404, detail="Trace not found")
 
     observations = t.get("observations") or []
     spans = []
@@ -203,8 +228,15 @@ def overview(hours: int = Query(24, ge=1, le=720), current=Depends(get_current_u
     frm = datetime.now(timezone.utc) - timedelta(hours=hours)
 
     # --- traces: volume, latency, cost, error, state breakdown, time series
+    # Scoped to the caller's org — the dashboard must never aggregate other
+    # tenants' runs into these numbers.
     try:
-        resp = client.api.trace.list(limit=100, from_timestamp=frm, order_by="timestamp.desc")
+        resp = client.api.trace.list(
+            limit=100,
+            from_timestamp=frm,
+            order_by="timestamp.desc",
+            tags=[_org_tag(current)],
+        )
         traces = [_to_dict(t) for t in (getattr(resp, "data", []) or [])]
     except Exception as e:
         # Langfuse slow/unreachable/timed out — degrade to an empty dashboard
