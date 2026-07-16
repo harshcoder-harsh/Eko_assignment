@@ -173,3 +173,42 @@ def test_noop_span_supports_update_trace():
     stay a harmless no-op."""
     span = tracing._NoopSpan()
     assert span.update_trace(user_id="a@b.com", tags=["org:orgA"]) is span
+
+
+# --- regression test for the real bug: "generator didn't stop after throw()" -----
+# This uses the *actual* langfuse package (not a fake), with tracing enabled but
+# pointed at an unreachable host, to reproduce the exact conditions that caused
+# the crash: a real Langfuse client, `as_type="agent"`, and user_id/tags passed
+# through. Before the fix, orchestrator.py called `root.update_trace(...)` which
+# doesn't exist on the real SDK's span object; the resulting AttributeError hit
+# tracing.observation()'s except block, which then `yield`ed a second time after
+# already yielding once — an illegal generator operation Python reports as
+# "generator didn't stop after throw()". This test exercises the real code path
+# (not just the fake client above) to guard against regressing on that exact bug.
+def test_observation_survives_body_exception_with_real_sdk(monkeypatch):
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.setenv("LANGFUSE_HOST", "http://127.0.0.1:1")  # nothing listens here
+    monkeypatch.setenv("LANGFUSE_TIMEOUT", "1")
+
+    # Force a fresh client so the env vars above take effect.
+    tracing._client = None
+    tracing._initialised = False
+
+    class Boom(Exception):
+        pass
+
+    # The bug reproduced with a REAL exception raised inside the `with` block
+    # (analogous to the old root.update_trace(...) AttributeError) — it must
+    # propagate normally, not get swallowed or trigger a RuntimeError about
+    # the generator protocol.
+    with pytest.raises(Boom):
+        with tracing.observation(
+            "run_support_workflow", as_type="agent",
+            user_id="alice@orga.com", tags=["org:orgA"],
+        ) as root:
+            raise Boom("simulated failure inside the traced block")
+
+    # Tracing must not have wedged the client for subsequent calls.
+    with tracing.observation("next_call") as span:
+        span.update(output={"ok": True})

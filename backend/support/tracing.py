@@ -23,7 +23,7 @@ The Langfuse v4 SDK (OpenTelemetry-based) is used. Spans opened via
 ``observation(...)`` blocks below become children of the root workflow span.
 """
 import os
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 
 # Resolved lazily on first use so importing this module is always safe.
 _client = None
@@ -102,26 +102,53 @@ def get_client():
 
 
 @contextmanager
-def observation(name: str, as_type: str = "span", input=None, metadata=None):
+def observation(name: str, as_type: str = "span", input=None, metadata=None,
+                 user_id: str | None = None, tags: list[str] | None = None):
     """Context manager yielding a Langfuse span (or a no-op span).
 
     ``as_type`` accepts the Langfuse observation types, e.g. "span",
     "agent", "chain", "retriever", "generation". Set the result on the span
     with ``span.update(output=...)`` inside the block.
+
+    Pass ``user_id``/``tags`` on the *root* observation of a trace (the one
+    opened with as_type="agent") to stamp trace-level identity used for
+    tenant isolation. These use Langfuse's ``propagate_attributes`` context
+    manager under the hood — the SDK has no ``update_trace`` method on the
+    span object itself (there was previously a bug here that called one).
+    ``propagate_attributes`` must be entered *before* the observation is
+    created so the attributes land on the trace and propagate to children.
     """
     client = _get_client()
     if client is None:
         yield _NOOP
         return
 
+    # Only the setup (opening the propagation context / starting the
+    # observation) is guarded — if either fails we fall back to a no-op
+    # span. Once we have a real span, exceptions raised by the caller's own
+    # code inside the `with` block must propagate normally, not be
+    # swallowed here. (Catching Exception around the yield and yielding
+    # again in the except branch is illegal generator/contextmanager
+    # behaviour and raises "generator didn't stop after throw()".)
+    stack = ExitStack()
     try:
-        with client.start_as_current_observation(
-            name=name, as_type=as_type, input=input, metadata=metadata
-        ) as span:
-            yield span
+        if user_id is not None or tags is not None:
+            from langfuse import propagate_attributes
+            stack.enter_context(propagate_attributes(user_id=user_id, tags=tags))
+        span = stack.enter_context(
+            client.start_as_current_observation(
+                name=name, as_type=as_type, input=input, metadata=metadata
+            )
+        )
     except Exception:
-        # If anything in the tracing path fails, don't take the workflow down.
+        stack.close()
         yield _NOOP
+        return
+
+    try:
+        yield span
+    finally:
+        stack.close()
 
 
 def flush():
