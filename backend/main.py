@@ -1,5 +1,7 @@
 import os
 
+
+
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -8,6 +10,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["MALLOC_ARENA_MAX"] = "2"
 
 from fastapi import FastAPI
+from api.slack_routes import router as slack_router   # near the other imports
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -52,6 +55,7 @@ app.include_router(router)
 app.include_router(analytics_router)
 app.include_router(documents_router)
 app.include_router(support_router)
+app.include_router(slack_router)                       
 app.include_router(observability_router)
 app.include_router(auth_router)
 

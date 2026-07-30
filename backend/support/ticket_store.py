@@ -41,6 +41,8 @@ def create_ticket(user_email: str, query: str, issue_type: str, severity: str,
 
 
 def list_tickets(user_email: str = None, status: str = None, org_id: str = None) -> list:
+    if not org_id:
+        raise ValueError("list_tickets requires org_id")
     query = {}
     if org_id:
         query["org_id"] = org_id
@@ -48,7 +50,7 @@ def list_tickets(user_email: str = None, status: str = None, org_id: str = None)
         query["user_email"] = user_email
     if status:
         query["status"] = status
-    cursor = tickets_collection.find(query) if query else tickets_collection.find()
+    cursor = tickets_collection.find(query)
     return list(cursor)
 
 

@@ -60,6 +60,8 @@ def get_run_by_ticket(ticket_id: str) -> dict:
 
 
 def list_runs(user_email: str = None, org_id: str = None) -> list:
+    if not org_id:
+        raise ValueError("list_runs requires org_id")
     query = {}
     if org_id:
         query["org_id"] = org_id
