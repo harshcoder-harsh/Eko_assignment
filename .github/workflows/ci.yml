@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-ci.txt
+
+      - name: Install test dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Run tests
+        env:
+          # Set explicitly so the suite never silently falls back to the
+          # insecure development secret. 32+ bytes avoids the HS256 key-length
+          # warning from PyJWT.
+          JWT_SECRET: ci-only-secret-not-used-anywhere-else-32b
+          ENVIRONMENT: development
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        # next.config has ignoreBuildErrors, so `next build` alone would not
+        # catch type regressions.
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  deps:
+    name: Full dependency install
+    runs-on: ubuntu-latest
+    # The backend job installs only a lean subset, so nothing else verifies
+    # that requirements.txt is actually installable. This job does, but it is
+    # slow (torch is ~800 MB), so it does not gate pushes.
+    if: github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install full requirements
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Import the application
+        env:
+          JWT_SECRET: ci-only-secret-not-used-anywhere-else-32b
+          ENVIRONMENT: development
+        run: python -c "import main; print('import OK')"

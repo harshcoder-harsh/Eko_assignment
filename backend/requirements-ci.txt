@@ -1,0 +1,37 @@
+# Minimal dependency set required to run the test suite.
+#
+# The full requirements.txt pulls torch + transformers + sentence-transformers
+# (~1 GB), which the tests do not need: tests/conftest.py provides a
+# `stub_embedder` fixture that replaces the SentenceTransformers model with a
+# deterministic hash-based encoder. Installing only this subset keeps CI to
+# roughly 30 seconds instead of several minutes.
+#
+# Versions are pinned to match requirements.txt exactly, so CI exercises the
+# same versions the application runs against.
+#
+# NOTE: because this is a subset, CI does NOT prove that requirements.txt as a
+# whole is installable. See the `deps` job in .github/workflows/ci.yml.
+
+# --- Web / API ---
+fastapi==0.139.0
+pydantic==2.13.4
+email-validator==2.3.0
+
+# --- Auth ---
+bcrypt==4.3.0
+PyJWT==2.13.0
+
+# --- Database ---
+pymongo==4.17.0
+certifi==2026.5.20
+
+# --- Vector search ---
+faiss-cpu==1.14.3
+numpy==2.5.1
+
+# --- Utilities ---
+python-dotenv==1.2.2
+
+# --- Test tooling ---
+pytest==9.1.1
+httpx==0.28.1
