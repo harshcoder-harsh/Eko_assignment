@@ -63,20 +63,49 @@ export default function SupportClawPage() {
   const [activeTab, setActiveTab] = useState<"reasoning" | "audit" | "tickets">("reasoning");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
   const api = getApiBaseUrl();
 
-  const fetchTickets = async () => {
+  // `silent` is used for the mount-time load, where a toast would be noise.
+  // An explicit Sync Tickets click always reports its outcome — the previous
+  // bare `catch {}` meant a 401 or network error looked identical to nothing
+  // happening, and a successful sync that returned the same tickets gave no
+  // feedback either, so the button appeared dead in both cases.
+  const fetchTickets = async (silent = false) => {
+    if (!silent) {
+      setSyncing(true);
+      setErrorMessage("");
+      setSuccessMessage("");
+    }
     try {
       const res = await axios.get(`${api}/support/tickets?mine_only=false`);
-      setTickets(res.data.tickets || []);
-    } catch {
-      // ignore
+      const list: TicketItem[] = res.data.tickets || [];
+      setTickets(list);
+      if (!silent) {
+        setSuccessMessage(`Synced ${list.length} ticket${list.length === 1 ? "" : "s"}.`);
+      }
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const message =
+        status === 401
+          ? "Your session has expired. Please sign in again."
+          : status === 403
+          ? "You don't have permission to view tickets."
+          : "Could not sync tickets. Check that the backend is reachable.";
+      if (silent) {
+        console.error("Initial ticket load failed:", err);
+        setErrorMessage(message);
+      } else {
+        setErrorMessage(message);
+      }
+    } finally {
+      if (!silent) setSyncing(false);
     }
   };
 
   useEffect(() => {
-    fetchTickets();
+    fetchTickets(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -95,7 +124,7 @@ export default function SupportClawPage() {
         setActiveTab("reasoning");
       }
       setQuery("");
-      fetchTickets();
+      fetchTickets(true);
     } catch (err) {
       setErrorMessage(axios.isAxiosError(err) && err.response?.data?.detail ? String(err.response.data.detail) : "An error occurred during workflow execution.");
     } finally {
@@ -113,8 +142,13 @@ export default function SupportClawPage() {
       const res = await handleApiGet(`${api}/support/audit/${runId}`);
       setAuditDetail(res.data);
       setActiveTab("audit");
-    } catch {
-      setErrorMessage("Could not load audit log for the selected run.");
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      setErrorMessage(
+        status === 404
+          ? "That run was not found for your organisation."
+          : "Could not load audit log for the selected run."
+      );
     }
   };
 
@@ -122,12 +156,19 @@ export default function SupportClawPage() {
     try {
       await handleApiPost(`${api}/support/ticket/${ticketId}/resolve`, {});
       setSuccessMessage("Ticket resolved successfully!");
-      fetchTickets();
+      fetchTickets(true);
       if (activeRun?.ticket?.ticket_id === ticketId) {
         setActiveRun((prev) => prev && prev.ticket ? { ...prev, ticket: { ...prev.ticket, status: "resolved" } } : prev);
       }
-    } catch {
-      setErrorMessage("Failed to resolve ticket.");
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      setErrorMessage(
+        status === 403
+          ? "Your role can't resolve tickets (requires Admin, Manager or Support)."
+          : status === 404
+          ? "That ticket was not found for your organisation."
+          : "Failed to resolve ticket."
+      );
     }
   };
 
@@ -167,9 +208,14 @@ export default function SupportClawPage() {
             <span className="text-[0.65rem] bg-white/10 px-2 py-0.5 rounded-full text-white/60 font-mono tracking-wider font-semibold">HERMES-AGENT ACTIVE</span>
           </div>
 
-          <button onClick={fetchTickets} className="p-2 rounded-lg hover:bg-white/[0.04] text-white/40 hover:text-white/80 transition-all flex items-center gap-1.5 text-xs">
-            <RefreshCw className="w-3.5 h-3.5" />
-            Sync Tickets
+          <button
+            onClick={() => fetchTickets()}
+            disabled={syncing}
+            aria-busy={syncing}
+            className="p-2 rounded-lg hover:bg-white/[0.04] text-white/40 hover:text-white/80 transition-all flex items-center gap-1.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing\u2026" : "Sync Tickets"}
           </button>
         </header>
 

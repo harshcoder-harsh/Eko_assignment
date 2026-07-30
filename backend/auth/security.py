@@ -15,22 +15,32 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 _ALGO = "HS256"
-_TOKEN_TTL_HOURS = int(os.getenv("JWT_TTL_HOURS", "72"))
+_TOKEN_TTL_HOURS = int(os.getenv("JWT_TTL_HOURS", "24"))
 
 _DEV_FALLBACK_SECRET = "dev-only-change-me-in-production"
 
 
 def _secret() -> str:
     s = os.getenv("JWT_SECRET")
-    if not s:
-        # Don't crash — dev machines shouldn't need env setup to try the app —
-        # but make it impossible to miss that this is insecure.
-        print(
-            "WARNING: JWT_SECRET is not set; using an insecure development "
-            "fallback. Set JWT_SECRET in the environment before deploying."
+    if s:
+        return s
+
+    # Outside development a missing secret is fatal, not a warning: with the
+    # fallback in place anyone can forge a token for any org_id and role,
+    # including admin, which defeats both auth and tenant isolation.
+    if os.getenv("ENVIRONMENT", "development").lower() != "development":
+        raise RuntimeError(
+            "JWT_SECRET must be set when ENVIRONMENT is not 'development'. "
+            "Generate one with: python3 -c \"import secrets; print(secrets.token_urlsafe(48))\""
         )
-        return _DEV_FALLBACK_SECRET
-    return s
+
+    # Dev machines shouldn't need env setup to try the app — but make it
+    # impossible to miss that this is insecure.
+    print(
+        "WARNING: JWT_SECRET is not set; using an insecure development "
+        "fallback. Set JWT_SECRET in the environment before deploying."
+    )
+    return _DEV_FALLBACK_SECRET
 
 
 # --- password hashing -------------------------------------------------------

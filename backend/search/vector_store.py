@@ -2,12 +2,19 @@ import faiss
 import numpy as np
 import json
 import os
+import threading
 from db import files_collection
 
 INDEX_FILE = "synced_docs/faiss.index"
 CHUNKS_JSONL_FILE = "synced_docs/chunks.jsonl"
 CHUNKS_JSON_FILE = "synced_docs/chunks.json"
 DIMENSION = 384 # Dimension for 'all-MiniLM-L6-v2'
+
+# The index and the chunk list are two files that must stay positionally aligned:
+# chunks[i] describes vector row i. Every mutation is therefore serialised, or
+# concurrent uploads interleave and citations start pointing at the wrong
+# document (potentially another org's).
+_write_lock = threading.RLock()
 
 _index_cache = None
 _index_mtime = None
@@ -123,11 +130,21 @@ def add_chunks_to_index(index, new_chunks):
     append_chunks(new_chunks)
 
 def add_to_faiss(new_chunks):
-    index = load_faiss_index()
-    add_chunks_to_index(index, new_chunks)
-    save_faiss_index(index)
+    with _write_lock:
+        index = load_faiss_index()
+        add_chunks_to_index(index, new_chunks)
+        save_faiss_index(index)
 
 def search_faiss(query, k=5, filters=None, org_id=None):
+    """Search the shared index, scoped to one organisation.
+
+    org_id is mandatory. It used to default to None, which silently disabled the
+    tenant filter below — any call site that forgot to pass it searched every
+    org's chunks. Failing loudly here is what makes that omission impossible.
+    """
+    if not org_id:
+        raise ValueError("search_faiss requires org_id — refusing an unscoped search")
+
     from embedding.embedder import model
     index = load_faiss_index()
     chunks = load_chunks()
@@ -178,7 +195,7 @@ def search_faiss(query, k=5, filters=None, org_id=None):
                         continue
                 else:
                     doc_id = chunk["doc_id"]
-                    metadata = get_document_metadata(doc_id)
+                    metadata = get_document_metadata(doc_id, org_id=org_id)
                     if metadata:
                         match = True
                         for key, val in filters.items():
@@ -198,15 +215,18 @@ def search_faiss(query, k=5, filters=None, org_id=None):
 
     return results
 
-def get_document_metadata(doc_id):
+def get_document_metadata(doc_id, org_id=None):
     # Strip the _chunk_X suffix to get the real doc_id
     base_doc_id = doc_id.split('_chunk_')[0] if '_chunk_' in doc_id else doc_id
-    
-    # Instead of looking for a local metadata.json, we fetch from MongoDB
+
+    # Instead of looking for a local metadata.json, we fetch from MongoDB.
+    # Scoped to the org when known so document names can't be read across tenants.
+    scope = {"org_id": org_id} if org_id else {}
+
     # Try both 'file_id' and 'id' depending on how it was saved
-    doc = files_collection.find_one({"file_id": base_doc_id})
+    doc = files_collection.find_one({**scope, "file_id": base_doc_id})
     if not doc:
-        doc = files_collection.find_one({"id": base_doc_id})
+        doc = files_collection.find_one({**scope, "id": base_doc_id})
     if doc:
         return {
             "name": doc.get("name"),
@@ -218,19 +238,20 @@ def get_document_metadata(doc_id):
 def remove_org_from_index(org_id):
     """Drop one org's chunks and rebuild the shared FAISS index + chunk store,
     reusing existing embeddings via reconstruct (no re-embedding)."""
-    index = load_faiss_index()
-    chunks = load_chunks()
-    if not chunks or index.ntotal == 0:
-        return 0
-    new_index = faiss.IndexFlatIP(DIMENSION)
-    remaining, vectors = [], []
-    for i, c in enumerate(chunks):
-        if c.get("org_id") == org_id or i >= index.ntotal:
-            continue
-        vectors.append(index.reconstruct(i))
-        remaining.append(c)
-    if vectors:
-        new_index.add(np.array(vectors).astype("float32"))
-    save_faiss_index(new_index)
-    save_chunks(remaining)
-    return len(chunks) - len(remaining)
+    with _write_lock:
+        index = load_faiss_index()
+        chunks = load_chunks()
+        if not chunks or index.ntotal == 0:
+            return 0
+        new_index = faiss.IndexFlatIP(DIMENSION)
+        remaining, vectors = [], []
+        for i, c in enumerate(chunks):
+            if c.get("org_id") == org_id or i >= index.ntotal:
+                continue
+            vectors.append(index.reconstruct(i))
+            remaining.append(c)
+        if vectors:
+            new_index.add(np.array(vectors).astype("float32"))
+        save_faiss_index(new_index)
+        save_chunks(remaining)
+        return len(chunks) - len(remaining)

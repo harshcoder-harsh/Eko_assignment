@@ -4,21 +4,28 @@ Reuses the existing FAISS index (synced from Google Drive via connectors/gdrive.
 rather than building a second vector store. Documents are treated as SOPs/FAQs
 based on a naming convention: any synced file whose name contains "sop" or "faq"
 (case-insensitive) is considered SOP material. If no such files exist yet, the
-retriever transparently falls back to the full document set so the workflow
-still works end to end during early testing — but it flags this in the
+retriever transparently falls back to the full document set FOR THAT ORG so the
+workflow still works end to end during early testing — but it flags this in the
 returned context so the caller and audit trail know grounding was generic.
+
+Every retrieval path here is scoped to the caller's org_id. There is deliberately
+no fallback that widens the scope on error: a retrieval failure must surface as a
+failure, never as a cross-tenant read.
 """
 from search.vector_store import search_faiss, get_document_metadata
 from db import files_collection
 
 
-def _sop_doc_ids(user_email: str) -> set:
-    """Return the file_ids of synced docs whose name looks like an SOP/FAQ doc."""
+def _sop_doc_ids(org_id: str) -> set:
+    """Return the file_ids of this org's synced docs that look like SOP/FAQ docs.
+
+    Deliberately has no except-fallback: an unscoped `files_collection.find()`
+    would enumerate every document of every tenant.
+    """
+    if not org_id:
+        raise ValueError("org_id is required for SOP retrieval")
     sop_ids = set()
-    try:
-        cursor = files_collection.find({"user_email": user_email})
-    except Exception:
-        cursor = files_collection.find()
+    cursor = files_collection.find({"org_id": org_id})
     for doc in cursor:
         name = (doc.get("name") or "").lower()
         if "sop" in name or "faq" in name or "policy" in name or "runbook" in name:
@@ -28,7 +35,7 @@ def _sop_doc_ids(user_email: str) -> set:
     return sop_ids
 
 
-def retrieve_sop_context(query: str, user_email: str, k: int = 6) -> dict:
+def retrieve_sop_context(query: str, user_email: str, org_id: str, k: int = 6) -> dict:
     """Retrieve the most relevant SOP/FAQ chunks for a classified query.
 
     Returns:
@@ -38,9 +45,9 @@ def retrieve_sop_context(query: str, user_email: str, k: int = 6) -> dict:
           "scoped_to_sop": bool,       # True if filtered to SOP-tagged docs
         }
     """
-    sop_ids = _sop_doc_ids(user_email)
+    sop_ids = _sop_doc_ids(org_id)
 
-    all_chunks = search_faiss(query, k=max(k * 4, 20), filters=None)
+    all_chunks = search_faiss(query, k=max(k * 4, 20), filters=None, org_id=org_id)
 
     if sop_ids:
         chunks = []
@@ -65,7 +72,7 @@ def retrieve_sop_context(query: str, user_email: str, k: int = 6) -> dict:
     for chunk in chunks:
         doc_id = chunk["doc_id"]
         text = chunk["text"]
-        metadata = get_document_metadata(doc_id)
+        metadata = get_document_metadata(doc_id, org_id=org_id)
         doc_name = metadata.get("name", "Unknown Document") if metadata else "Unknown Document"
         context_parts.append(f"SOP Document: {doc_name}\nContent:\n{text}")
         if not any(s["doc_id"] == doc_id for s in sources):

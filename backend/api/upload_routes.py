@@ -10,18 +10,23 @@ import uuid
 from datetime import datetime
 from urllib.parse import urlparse, unquote
 
-import requests
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel
 
 from processing.parser import process_single_file
 from embedding.embedder import embed_chunks
 from search.vector_store import load_faiss_index, add_chunks_to_index, save_faiss_index
-from connectors.gdrive import current_user_email, SYNC_DIR
+from connectors.gdrive import org_sync_dir
+from processing.url_guard import safe_get, UnsafeUrlError
 from db import files_collection
 from auth.security import get_current_user
 
 router = APIRouter(tags=["documents"])
+
+# Generic message returned to clients on unhandled errors. The real
+# exception is logged server-side; str(e) used to be sent to the caller,
+# which leaked Mongo URIs, file paths and stack detail.
+INTERNAL_ERROR = "An internal error occurred. Please try again."
 
 SUPPORTED_DOC_EXT = {".pdf", ".docx", ".txt"}
 MAX_BYTES = 25 * 1024 * 1024  # 25 MB
@@ -34,19 +39,13 @@ _EXT_MIME = {
 
 
 def _download(url: str) -> bytes:
-    try:
-        resp = requests.get(url, timeout=30, stream=True, headers={"User-Agent": "FlowClaw-RAG/1.0"})
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        raise ValueError(f"Could not fetch URL: {e}")
-    content = b""
-    for chunk in resp.iter_content(8192):
-        content += chunk
-        if len(content) > MAX_BYTES:
-            raise ValueError("File too large (max 25 MB).")
-    if not content:
-        raise ValueError("The URL returned an empty file.")
-    return content
+    """Fetch a user-supplied URL through the SSRF guard.
+
+    UnsafeUrlError subclasses ValueError, so callers that already map ValueError
+    to a 400 keep working unchanged.
+    """
+    resp = safe_get(url, max_bytes=MAX_BYTES)
+    return resp.flowclaw_content
 
 
 def _filename_from_url(url: str) -> str:
@@ -54,22 +53,24 @@ def _filename_from_url(url: str) -> str:
     return name
 
 
-def _ingest_document(content: bytes, filename: str, user_email: str, source: str, org_id: str = None):
+def _ingest_document(content: bytes, filename: str, user_email: str, source: str, org_id: str):
     ext = os.path.splitext(filename)[1].lower()
     if ext not in SUPPORTED_DOC_EXT:
         raise ValueError(f"Unsupported file type '{ext or 'none'}'. Supported: {', '.join(sorted(SUPPORTED_DOC_EXT))}")
+    if not org_id:
+        raise ValueError("org_id is required to ingest a document")
 
-    if not os.path.exists(SYNC_DIR):
-        os.makedirs(SYNC_DIR)
+    target_dir = org_sync_dir(org_id)
+    os.makedirs(target_dir, exist_ok=True)
 
     doc_id = uuid.uuid4().hex[:16]
-    path = os.path.join(SYNC_DIR, f"{doc_id}{ext}")
+    path = os.path.join(target_dir, f"{doc_id}{ext}")
     with open(path, "wb") as f:
         f.write(content)
 
     # Register metadata so it appears in /documents and citations resolve.
     files_collection.update_one(
-        {"user_email": user_email, "file_id": doc_id},
+        {"org_id": org_id, "file_id": doc_id},
         {"$set": {
             "user_email": user_email,
             "org_id": org_id,
@@ -117,7 +118,7 @@ async def upload_document(file: UploadFile = File(...), current=Depends(get_curr
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)
 
 
 class DocUrlRequest(BaseModel):
@@ -139,4 +140,4 @@ def import_document_url(req: DocUrlRequest, current=Depends(get_current_user)):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)

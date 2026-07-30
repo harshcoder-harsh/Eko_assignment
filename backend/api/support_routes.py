@@ -17,6 +17,11 @@ from auth.security import get_current_user, require_role
 
 router = APIRouter(prefix="/support", tags=["support"])
 
+# Generic message returned to clients on unhandled errors. The real
+# exception is logged server-side; str(e) used to be sent to the caller,
+# which leaked Mongo URIs, file paths and stack detail.
+INTERNAL_ERROR = "An internal error occurred. Please try again."
+
 # Roles allowed to run the agent / mutate tickets. Viewers can only read.
 _OPERATOR_ROLES = ("admin", "manager", "support")
 
@@ -39,7 +44,7 @@ def resolve_query(req: ResolveRequest, current=Depends(require_role(*_OPERATOR_R
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)
 
 
 @router.get("/tickets")

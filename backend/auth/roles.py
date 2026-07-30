@@ -1,11 +1,15 @@
 """Role definitions for multi-tenant RBAC.
 
-Slice 1 only *assigns* roles (the first user of an org becomes ADMIN). Route
-enforcement based on these roles arrives in Slice 2 — but the enum lives here
-now so tokens carry a role from day one and nothing has to be migrated later.
+Registration assigns roles (the first user of an org becomes ADMIN) and routes
+enforce them via `auth.security.require_role`. Tokens carry a role from day one.
 
 Roles are ordered by privilege so a simple `>=` check can express "this route
 needs at least Manager". VIEWER is the floor, ADMIN the ceiling.
+
+NOTE: SUPPORT and ANALYST deliberately share rank 1 — they are siblings, not a
+hierarchy — so `role_at_least` cannot distinguish them. Routes that need to
+separate the two must use an explicit role tuple with `require_role`, which is
+what the support endpoints do.
 """
 from enum import Enum
 

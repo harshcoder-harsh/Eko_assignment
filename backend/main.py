@@ -28,16 +28,21 @@ frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
 if frontend_url.endswith("/"):
     frontend_url = frontend_url[:-1]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        frontend_url,
-        
+# Localhost origins are development conveniences only. Shipping them in a
+# production allowlist alongside allow_credentials=True lets any page served
+# from a localhost port make credentialed calls to the API.
+allowed_origins = [frontend_url]
+if os.getenv("ENVIRONMENT", "development").lower() == "development":
+    allowed_origins += [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
-        "http://127.0.0.1:3001"
-    ],
+        "http://127.0.0.1:3001",
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

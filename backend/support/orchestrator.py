@@ -37,11 +37,15 @@ def run_support_workflow(query: str, user_email: str = "default_user", org_id: s
     # step below opens a child span that nests under it automatically. When
     # Langfuse is not configured, `tracing.observation` yields a no-op and
     # the workflow behaves exactly as before.
+    _trace_name = query.strip().replace("\n", " ")
+    if len(_trace_name) > 60:
+        _trace_name = _trace_name[:60].rstrip() + "..."
+
     with tracing.observation(
-        "run_support_workflow",
+        _trace_name,
         as_type="agent",
         input={"query": query},
-        metadata={"run_id": run_id, "user_email": user_email, "org_id": org_id},
+        metadata={"run_id": run_id, "user_email": user_email, "org_id": org_id, "workflow": "run_support_workflow"},
         user_id=user_email,
         tags=[f"org:{org_id}"] if org_id else [],
     ) as root:

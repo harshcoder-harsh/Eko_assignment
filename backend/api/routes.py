@@ -2,7 +2,16 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-from connectors.gdrive import get_files_to_sync, download_items, SCOPES, TOKEN_FILE
+from connectors.gdrive import (
+    get_files_to_sync,
+    download_items,
+    SCOPES,
+    get_drive_service,
+    has_drive_connection,
+    disconnect_drive,
+    save_credentials,
+    current_user_email,
+)
 from google_auth_oauthlib.flow import Flow
 from processing.parser import process_single_file
 from embedding.embedder import embed_chunks
@@ -14,6 +23,11 @@ from auth.security import get_current_user
 
 router = APIRouter()
 
+# Generic message returned to clients on unhandled errors. The real
+# exception is logged server-side; str(e) used to be sent to the caller,
+# which leaked Mongo URIs, file paths and stack detail.
+INTERNAL_ERROR = "An internal error occurred. Please try again."
+
 # Simple in-memory cache for LLM responses
 llm_cache = {}
 oauth_states = {}
@@ -21,13 +35,7 @@ oauth_states = {}
 @router.get("/documents")
 def list_documents(current=Depends(get_current_user)):
     try:
-        from connectors.gdrive import get_drive_service
-        try:
-            service = get_drive_service()
-            about = service.about().get(fields="user").execute()
-            user_email = about['user']['emailAddress']
-        except Exception:
-            user_email = "default_user"
+        user_email = current_user_email(current["org_id"])
 
         docs = list(files_collection.find({"org_id": current["org_id"]}))
         doc_ids = set()
@@ -64,15 +72,22 @@ def list_documents(current=Depends(get_current_user)):
         return {"documents": []}
 
 @router.get("/auth/status")
-def auth_status():
+def auth_status(current=Depends(get_current_user)):
+    """Whether THIS org has a Drive connection (previously reported True if any
+    org anywhere in the deployment had connected)."""
     try:
-        is_authenticated = os.path.exists(TOKEN_FILE)
-        return {"authenticated": is_authenticated}
-    except Exception as e:
-        return {"authenticated": False, "error": str(e)}
+        return {"authenticated": has_drive_connection(current["org_id"])}
+    except Exception:
+        return {"authenticated": False}
 
 @router.get("/auth/login")
-def auth_login():
+def auth_login(current=Depends(get_current_user)):
+    """Start the Drive OAuth flow for the caller's org.
+
+    Requires a FlowClaw JWT: the resulting credentials are stored against the
+    caller's org_id, so an unauthenticated start would let anyone decide which
+    tenant a Drive account gets attached to.
+    """
     try:
         FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
         API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
@@ -114,14 +129,16 @@ def auth_login():
                     print(f"Warning: Error reading oauth_states.json: {e}")
                     pass
                     
-        # Save new state
-        states[state] = flow.code_verifier
+        # Save new state, bound to the org that started the flow. The callback
+        # cannot be authenticated (Google redirects the browser to it), so the
+        # org identity has to travel with the state.
+        states[state] = {"code_verifier": flow.code_verifier, "org_id": current["org_id"]}
         with open(states_file, "w") as f:
             json.dump(states, f)
         
         return RedirectResponse(url=auth_url)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)
 
 @router.get("/storage/stats")
 def get_storage_stats(current=Depends(get_current_user)):
@@ -129,16 +146,9 @@ def get_storage_stats(current=Depends(get_current_user)):
         from search.vector_store import load_faiss_index, load_chunks
         from db import files_collection
         import os
-        from connectors.gdrive import get_drive_service
         import time
-        
-        user_email = None
-        try:
-            service = get_drive_service()
-            about = service.about().get(fields="user").execute()
-            user_email = about['user']['emailAddress']
-        except Exception:
-            pass
+
+        user_email = current_user_email(current["org_id"])
         
         index = load_faiss_index()
         vector_count = index.ntotal if index else 0
@@ -290,14 +300,22 @@ def auth_callback(state: str, code: str):
             state=state
         )
         
-        # Restore the exact PKCE code_verifier from the JSON file
-        flow.code_verifier = states[state]
-        
+        # Restore the exact PKCE code_verifier + the org that started the flow.
+        entry = states[state]
+        if isinstance(entry, dict):
+            flow.code_verifier = entry.get("code_verifier")
+            org_id = entry.get("org_id")
+        else:
+            # Legacy state written before per-org tokens; cannot be attributed.
+            return RedirectResponse(url=f"{FRONTEND_URL}/?error=invalid_state")
+
+        if not org_id:
+            return RedirectResponse(url=f"{FRONTEND_URL}/?error=invalid_state")
+
         flow.fetch_token(code=code)
         creds = flow.credentials
-        
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
+
+        save_credentials(org_id, creds)
             
         # Clean up the state
         del states[state]
@@ -312,20 +330,13 @@ def auth_callback(state: str, code: str):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)
 
 @router.delete("/chat")
 def clear_chat(current=Depends(get_current_user)):
     try:
-        from connectors.gdrive import get_drive_service
-        try:
-            service = get_drive_service()
-            about = service.about().get(fields="user").execute()
-            user_email = about['user']['emailAddress']
-        except Exception as e:
-            print(f"Error getting user email for clear chat: {e}")
-            user_email = "default_user"
-            
+        user_email = current_user_email(current["org_id"])
+
         result = chats_collection.delete_many({"user_email": current["email"], "org_id": current["org_id"]})
         deleted_count = result.deleted_count if hasattr(result, 'deleted_count') else 0
         print(f"Cleared {deleted_count} chat messages for user: {user_email}")
@@ -333,7 +344,7 @@ def clear_chat(current=Depends(get_current_user)):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)
 
 class AskRequest(BaseModel):
     query: str
@@ -355,14 +366,9 @@ from datetime import datetime
 @router.post("/disconnect-drive")
 def disconnect_drive_endpoint(current=Depends(get_current_user)):
     try:
-        token_file = "token.json"
-        states_file = "oauth_states.json"
-        
-        # Remove the Drive connection (token/state) — connection only, not shared data.
-        if os.path.exists(token_file):
-            os.remove(token_file)
-        if os.path.exists(states_file):
-            os.remove(states_file)
+        # Remove ONLY this org's Drive connection. Deleting the shared token.json
+        # and oauth_states.json used to disconnect every tenant at once.
+        disconnect_drive(current["org_id"])
 
         # Org-scoped data cleanup: drop only this org's docs + indexed chunks.
         files_collection.delete_many({"org_id": current["org_id"]})
@@ -374,7 +380,7 @@ def disconnect_drive_endpoint(current=Depends(get_current_user)):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)
 
 # Keep track of active background syncs
 active_syncs = set()
@@ -480,15 +486,18 @@ def sync_drive_endpoint(background_tasks: BackgroundTasks, force: Optional[bool]
         import time
         start_time = time.time()
         
-        if not os.path.exists("token.json"):
-            raise Exception("No token.json found. Please login to Google Drive first.")
+        if not has_drive_connection(current["org_id"]):
+            raise HTTPException(
+                status_code=400,
+                detail="Google Drive is not connected for your organisation. Please connect it first.",
+            )
             
         if force:
             files_collection.delete_many({"org_id": current["org_id"]})
             from search.vector_store import remove_org_from_index
             remove_org_from_index(current["org_id"])
                 
-        items, user_email = get_files_to_sync(page_size=20, force=bool(force), folder_url=folder_url)
+        items, user_email = get_files_to_sync(current["org_id"], page_size=20, force=bool(force), folder_url=folder_url)
         if not items:
             return {"status": "success", "files_processed": 0, "message": "No new files to sync.", "files": []}
 
@@ -512,6 +521,8 @@ def sync_drive_endpoint(background_tasks: BackgroundTasks, force: Optional[bool]
             "message": f"Sync started for {len(items)} files. Indexing is running in the background.",
             "files": [{"id": f["id"], "name": f["name"]} for f in items]
         }
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -526,13 +537,7 @@ def sync_drive_endpoint(background_tasks: BackgroundTasks, force: Optional[bool]
 @router.post("/ask", response_model=AskResponse)
 def ask_endpoint(req: AskRequest, current=Depends(get_current_user)):
     try:
-        from connectors.gdrive import get_drive_service
-        try:
-            service = get_drive_service()
-            about = service.about().get(fields="user").execute()
-            user_email = about['user']['emailAddress']
-        except Exception:
-            user_email = "default_user"
+        user_email = current_user_email(current["org_id"])
 
         progress = sync_progress.get(user_email) if user_email else None
         if (user_email in active_syncs) or (progress and progress.get("stage") not in (None, "done", "error")):
@@ -613,7 +618,7 @@ def ask_endpoint(req: AskRequest, current=Depends(get_current_user)):
         for chunk in top_chunks:
             doc_id = chunk["doc_id"]
             text = chunk["text"]
-            metadata = get_document_metadata(doc_id)
+            metadata = get_document_metadata(doc_id, org_id=current["org_id"])
             doc_name = metadata.get("name", "Unknown Document") if metadata else "Unknown Document"
             
             context_parts.append(f"Document: {doc_name}\nContent:\n{text}")
@@ -706,4 +711,4 @@ Question:
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)

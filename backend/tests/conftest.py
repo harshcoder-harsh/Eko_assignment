@@ -18,3 +18,27 @@ def isolated_vector_store(tmp_path, monkeypatch):
         monkeypatch.setattr(vs, attr, None, raising=False)
 
     return vs
+
+@pytest.fixture
+def stub_embedder(monkeypatch):
+    """Replace the SentenceTransformers model with a deterministic hash-based
+    encoder so retrieval tests don't need torch or a model download."""
+    import numpy as np
+    import sys
+    import types
+
+    class _StubModel:
+        def encode(self, texts, normalize_embeddings=True, **kwargs):
+            out = []
+            for t in texts:
+                rng = np.random.default_rng(abs(hash(t)) % (2**32))
+                v = rng.random(384).astype("float32")
+                if normalize_embeddings:
+                    v = v / np.linalg.norm(v)
+                out.append(v)
+            return np.array(out, dtype="float32")
+
+    module = types.ModuleType("embedding.embedder")
+    module.model = _StubModel()
+    monkeypatch.setitem(sys.modules, "embedding.embedder", module)
+    return module.model

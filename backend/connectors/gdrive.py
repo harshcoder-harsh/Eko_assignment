@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import re
 import asyncio
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -9,8 +10,53 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-TOKEN_FILE = 'token.json'
 SYNC_DIR = 'synced_docs'
+
+# Drive credentials are stored PER ORGANISATION. A single shared token.json
+# meant that whichever user completed the OAuth flow last owned the Drive
+# connection for every tenant in the deployment — a cross-tenant data leak.
+TOKEN_DIR = 'drive_tokens'
+
+
+def _safe_org(org_id: str) -> str:
+    """Sanitise org_id before using it in a filesystem path."""
+    if not org_id:
+        raise ValueError("org_id is required for Google Drive access")
+    return re.sub(r"[^A-Za-z0-9_-]", "_", str(org_id))
+
+
+def token_path(org_id: str) -> str:
+    """Filesystem path of the Drive OAuth token for one organisation."""
+    return os.path.join(TOKEN_DIR, f"token_{_safe_org(org_id)}.json")
+
+
+def org_sync_dir(org_id: str) -> str:
+    """Per-org download directory, so two orgs syncing the same Drive file id
+    cannot overwrite each other's copy."""
+    return os.path.join(SYNC_DIR, _safe_org(org_id))
+
+
+def has_drive_connection(org_id: str) -> bool:
+    try:
+        return os.path.exists(token_path(org_id))
+    except ValueError:
+        return False
+
+
+def disconnect_drive(org_id: str) -> bool:
+    """Remove one org's Drive credentials. Never touches another org's token."""
+    path = token_path(org_id)
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+    return False
+
+
+def save_credentials(org_id: str, creds) -> None:
+    os.makedirs(TOKEN_DIR, exist_ok=True)
+    with open(token_path(org_id), 'w') as token:
+        token.write(creds.to_json())
+
 
 def _get_user_email(service):
     try:
@@ -20,51 +66,52 @@ def _get_user_email(service):
         print("Could not get user email", e)
         return "default_user"
 
-def current_user_email():
-    """Resolve the logged-in Google user, or 'default_user' when not authed.
+def current_user_email(org_id: str):
+    """Resolve the Google account connected to this org, or 'default_user'.
 
-    Used by the no-auth direct upload / URL-import paths so files can be ingested
+    Used by the direct upload / URL-import paths so files can be ingested
     without connecting Google Drive at all.
     """
     try:
-        service = get_drive_service()
+        service = get_drive_service(org_id)
         return _get_user_email(service)
     except Exception:
         return "default_user"
 
 
-def get_drive_service():
+def get_drive_service(org_id: str):
+    """Build a Drive client using the calling organisation's credentials."""
+    path = token_path(org_id)
     creds = None
-    if os.path.exists(TOKEN_FILE):
+    if os.path.exists(path):
         try:
-            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+            creds = Credentials.from_authorized_user_file(path, SCOPES)
         except Exception:
             # If token is corrupted, remove it
-            os.remove(TOKEN_FILE)
+            os.remove(path)
             creds = None
-            
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
             except Exception:
                 # If refresh fails, remove token and re-auth
-                if os.path.exists(TOKEN_FILE):
-                    os.remove(TOKEN_FILE)
+                if os.path.exists(path):
+                    os.remove(path)
                 creds = None
-                
+
         if not creds:
             raise Exception("Not authenticated. Please login with Google first.")
-                
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
+
+        save_credentials(org_id, creds)
 
     from googleapiclient.discovery import build
-    
+
     # Just use the default build which automatically handles credentials
     return build('drive', 'v3', credentials=creds)
 
-def download_file(service, file_id, file_name, mime_type, modified_time, synced_files, user_email, org_id=None):
+def download_file(service, file_id, file_name, mime_type, modified_time, synced_files, user_email, org_id):
     request = None
     if mime_type == 'application/vnd.google-apps.document':
         request = service.files().export_media(fileId=file_id, mimeType='application/pdf')
@@ -75,7 +122,9 @@ def download_file(service, file_id, file_name, mime_type, modified_time, synced_
         if not ext:
             ext = '.pdf' if mime_type == 'application/pdf' else '.txt'
 
-    file_path = os.path.join(SYNC_DIR, f"{file_id}{ext}")
+    target_dir = org_sync_dir(org_id)
+    os.makedirs(target_dir, exist_ok=True)
+    file_path = os.path.join(target_dir, f"{file_id}{ext}")
 
     try:
         with open(file_path, 'wb') as f:
@@ -97,7 +146,7 @@ def download_file(service, file_id, file_name, mime_type, modified_time, synced_
             "source": "gdrive"
         }
         files_collection.update_one(
-            {"user_email": user_email, "file_id": file_id},
+            {"org_id": org_id, "file_id": file_id},
             {"$set": doc},
             upsert=True
         )
@@ -112,17 +161,14 @@ def download_file(service, file_id, file_name, mime_type, modified_time, synced_
         print(f"Failed to download {file_name}: {e}")
         return None
 
-import re
-
-def get_files_to_sync(page_size: int = 10, force: bool = False, folder_url: str = None):
-    service = get_drive_service()
-    if not os.path.exists(SYNC_DIR):
-        os.makedirs(SYNC_DIR)
+def get_files_to_sync(org_id: str, page_size: int = 10, force: bool = False, folder_url: str = None):
+    service = get_drive_service(org_id)
+    os.makedirs(org_sync_dir(org_id), exist_ok=True)
 
     user_email = _get_user_email(service)
 
     from db import files_collection
-    synced_files_cursor = files_collection.find({"user_email": user_email})
+    synced_files_cursor = files_collection.find({"org_id": org_id})
     synced_files = {f["file_id"]: f for f in synced_files_cursor}
 
     # Extract folder ID if a URL is provided
@@ -157,12 +203,12 @@ def get_files_to_sync(page_size: int = 10, force: bool = False, folder_url: str 
 
     return to_download, user_email
 
-def download_items(items, user_email, org_id=None):
+def download_items(items, user_email, org_id):
     if not items:
         return []
 
     from db import files_collection
-    synced_files_cursor = files_collection.find({"user_email": user_email})
+    synced_files_cursor = files_collection.find({"org_id": org_id})
     synced_files = {f["file_id"]: f for f in synced_files_cursor}
 
     try:
@@ -172,7 +218,7 @@ def download_items(items, user_email, org_id=None):
     max_workers = max(1, min(max_workers, 3))
 
     def _download_one(item):
-        service = get_drive_service()
+        service = get_drive_service(org_id)
         file_id = item['id']
         file_name = item['name']
         mime_type = item['mimeType']
@@ -201,9 +247,9 @@ def download_items(items, user_email, org_id=None):
 
     return downloaded
 
-def sync_google_drive():
-    items, user_email = get_files_to_sync(page_size=10, force=False)
-    return download_items(items, user_email)
+def sync_google_drive(org_id: str):
+    items, user_email = get_files_to_sync(org_id, page_size=10, force=False)
+    return download_items(items, user_email, org_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -217,9 +263,9 @@ DATA_MIME_TYPES = [
 ]
 
 
-def list_data_files(page_size: int = 50, folder_url: str = None):
+def list_data_files(org_id: str, page_size: int = 50, folder_url: str = None):
     """List CSV / Excel / Google Sheets files for analytics import."""
-    service = get_drive_service()
+    service = get_drive_service(org_id)
     user_email = _get_user_email(service)
 
     folder_query = ""
@@ -241,9 +287,9 @@ def list_data_files(page_size: int = 50, folder_url: str = None):
     return items, user_email
 
 
-def download_data_file_bytes(file_id: str):
+def download_data_file_bytes(file_id: str, org_id: str):
     """Download a tabular Drive file into memory; returns (bytes, filename)."""
-    service = get_drive_service()
+    service = get_drive_service(org_id)
     meta = service.files().get(fileId=file_id, fields="id, name, mimeType").execute()
     mime = meta.get('mimeType')
     name = meta.get('name', file_id)
