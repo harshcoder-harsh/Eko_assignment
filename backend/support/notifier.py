@@ -57,6 +57,19 @@ def _actions_block(ticket_id):
 
 
 def _build_payload(ticket_id, query, issue_type, severity, reason, org_id):
+    # Show the org's display name rather than its UUID. Imported inside the
+    # function because notifier is imported by orchestrator, and pulling
+    # auth.store in at module level risks a circular import. Wrapped in
+    # try/except because a cosmetic label must never fail an escalation.
+    org_label = org_id
+    try:
+        from auth.store import get_org_by_id
+        org = get_org_by_id(org_id)
+        if org and org.get("name"):
+            org_label = org["name"]
+    except Exception:
+        pass
+
     preview = query if len(query) <= _QUERY_PREVIEW_CHARS else query[:_QUERY_PREVIEW_CHARS] + "…"
     return {
         # Fallback text for notifications and unsupported clients.
@@ -74,7 +87,7 @@ def _build_payload(ticket_id, query, issue_type, severity, reason, org_id):
                 "type": "section",
                 "fields": [
                     {"type": "mrkdwn", "text": f"*Ticket*\n`{ticket_id}`"},
-                    {"type": "mrkdwn", "text": f"*Org*\n`{org_id}`"},
+                    {"type": "mrkdwn", "text": f"*Org*\n`{org_label}`"},
                     {"type": "mrkdwn", "text": f"*Reason*\n{reason or 'not specified'}"},
                 ],
             },
@@ -86,7 +99,6 @@ def _build_payload(ticket_id, query, issue_type, severity, reason, org_id):
 def notify_escalation(ticket_id, query, issue_type, severity, reason, org_id):
     """Post an escalation to Slack. Never raises, never blocks."""
     webhook = os.getenv("SLACK_WEBHOOK_URL")
-    
     if not webhook:
         return
 
@@ -95,7 +107,6 @@ def notify_escalation(ticket_id, query, issue_type, severity, reason, org_id):
     def _send():
         try:
             resp = requests.post(webhook, json=payload, timeout=_TIMEOUT)
-            
             if resp.status_code >= 400:
                 print(f"Slack notification for ticket {ticket_id} "
                       f"returned {resp.status_code}: {resp.text[:200]}")
