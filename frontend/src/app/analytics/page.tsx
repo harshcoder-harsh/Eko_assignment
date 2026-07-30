@@ -27,7 +27,7 @@ export default function AnalyticsPage() {
   const [claws, setClaws] = useState<Claw[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedClaw, setSelectedClaw] = useState<string>("data_analyst");
-  const [result, setResult] = useState<any>(null);
+  const [results, setResults] = useState<Record<string, any>>({});
   const [running, setRunning] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>("");
@@ -59,7 +59,7 @@ export default function AnalyticsPage() {
       const res = await axios.post(`${api}/analytics/upload`, form, { headers: { "Content-Type": "multipart/form-data" } });
       await fetchDatasets();
       setActiveId(res.data.dataset.dataset_id);
-      setResult(null);
+      setResults({});
     } catch (e: any) {
       setError(e.response?.data?.detail || "Upload failed.");
     } finally {
@@ -77,7 +77,7 @@ export default function AnalyticsPage() {
       await fetchDatasets();
       setActiveId(res.data.dataset.dataset_id);
       setDataUrl("");
-      setResult(null);
+      setResults({});
     } catch (e: any) {
       setError(e.response?.data?.detail || "URL import failed.");
     } finally {
@@ -88,7 +88,7 @@ export default function AnalyticsPage() {
   const deleteDataset = async (id: string) => {
     try {
       await axios.delete(`${api}/analytics/dataset/${id}`);
-      if (activeId === id) { setActiveId(null); setResult(null); }
+      if (activeId === id) { setActiveId(null); setResults({}); }
       await fetchDatasets();
     } catch { /* ignore */ }
   };
@@ -97,10 +97,9 @@ export default function AnalyticsPage() {
     if (!activeId) { setError("Upload or select a dataset first."); return; }
     setRunning(true);
     setError("");
-    setResult(null);
     try {
       const res = await axios.post(`${api}/analytics/run`, { dataset_id: activeId, claw: selectedClaw });
-      setResult(res.data.result);
+      setResults((prev) => ({ ...prev, [selectedClaw]: res.data.result }));
     } catch (e: any) {
       setError(e.response?.data?.detail || "Agent run failed.");
     } finally {
@@ -154,7 +153,7 @@ export default function AnalyticsPage() {
                 <Database className="w-6 h-6 opacity-50" /><p className="text-xs">No datasets yet.</p>
               </div>
             ) : datasets.map((d) => (
-              <div key={d.dataset_id} onClick={() => { setActiveId(d.dataset_id); setResult(null); }}
+              <div key={d.dataset_id} onClick={() => { setActiveId(d.dataset_id); setResults({}); }}
                 className={`p-3 rounded-lg flex items-center gap-3 cursor-pointer transition-colors group/item ${activeId === d.dataset_id ? "bg-white/[0.08] border border-white/15" : "hover:bg-white/[0.05] border border-transparent"}`}>
                 <Database className={`w-4 h-4 shrink-0 ${activeId === d.dataset_id ? "text-white" : "text-white/40"}`} />
                 <div className="flex-1 min-w-0">
@@ -199,11 +198,30 @@ export default function AnalyticsPage() {
             })}
           </div>
 
-          <button onClick={runClaw} disabled={running || !activeId}
-            className="flex items-center justify-center gap-2.5 bg-white text-black px-6 py-3 rounded-full font-medium text-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:hover:scale-100 transition-all shadow-[0_0_30px_rgba(255,255,255,0.12)]">
-            {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            {running ? "Agent is analyzing..." : `Run ${claws.find((c) => c.id === selectedClaw)?.name.replace(" Claw", "") || "Agent"}`}
-          </button>
+          <div className="flex items-center gap-3">
+  <button onClick={runClaw} disabled={running || !activeId || !!results[selectedClaw]}
+    className="flex items-center justify-center gap-2.5 bg-white text-black px-6 py-3 rounded-full font-medium text-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:hover:scale-100 transition-all shadow-[0_0_30px_rgba(255,255,255,0.12)]">
+    {running ? (
+      <Loader2 className="w-4 h-4 animate-spin" />
+    ) : results[selectedClaw] ? (
+      <Sparkles className="w-4 h-4" />
+    ) : (
+      <Play className="w-4 h-4" />
+    )}
+    {running
+      ? "Agent is analyzing..."
+      : results[selectedClaw]
+      ? "Already Run"
+      : `Run ${claws.find((c) => c.id === selectedClaw)?.name.replace(" Claw", "") || "Agent"}`}
+  </button>
+
+  {results[selectedClaw] && !running && (
+    <button onClick={runClaw}
+      className="text-white/40 hover:text-white/80 text-xs flex items-center gap-1.5 transition-colors">
+      <RefreshCw className="w-3.5 h-3.5" /> Re-run
+    </button>
+  )}
+</div>
 
           {/* Results */}
           {running && (
@@ -211,8 +229,8 @@ export default function AnalyticsPage() {
               <Loader2 className="w-4 h-4 animate-spin" /> Computing statistics and generating insights...
             </motion.div>
           )}
-          {!running && result && <ResultView result={result} />}
-          {!running && !result && (
+          {!running && results[selectedClaw] && <ResultView result={results[selectedClaw]} />}
+          {!running && !results[selectedClaw] && (
             <div className="h-[40vh] flex flex-col items-center justify-center text-white/25 gap-4">
               <Sparkles className="w-10 h-10 opacity-40" />
               <p className="text-sm">Pick an agent and click Run to generate analytics.</p>
