@@ -86,6 +86,7 @@ def _build_payload(ticket_id, query, issue_type, severity, reason, org_id):
 def notify_escalation(ticket_id, query, issue_type, severity, reason, org_id):
     """Post an escalation to Slack. Never raises, never blocks."""
     webhook = os.getenv("SLACK_WEBHOOK_URL")
+    
     if not webhook:
         return
 
@@ -94,10 +95,11 @@ def notify_escalation(ticket_id, query, issue_type, severity, reason, org_id):
     def _send():
         try:
             resp = requests.post(webhook, json=payload, timeout=_TIMEOUT)
+            
             if resp.status_code >= 400:
                 print(f"Slack notification for ticket {ticket_id} "
                       f"returned {resp.status_code}: {resp.text[:200]}")
         except Exception as exc:
             print(f"Slack notification failed for ticket {ticket_id}: {exc}")
 
-    threading.Thread(target=_send, daemon=True, name=f"slack-{ticket_id}").start
+    threading.Thread(target=_send, daemon=True, name=f"slack-{ticket_id}").start()

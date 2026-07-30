@@ -7,7 +7,6 @@ from support.escalation import should_escalate, is_unresolved
 from support.ticket_store import create_ticket, ESCALATED, OPEN, RESOLVED
 from support import audit
 from support import tracing
-from support.notifier import notify_escalation
 import os
 
 _mem0_client = None
