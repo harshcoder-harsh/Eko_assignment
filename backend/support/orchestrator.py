@@ -1,11 +1,13 @@
 """Workflow orchestrator for the Support Escalation Claw."""
 from support.classifier import classify_query
+from support.notifier import notify_escalation
 from support.sop_retriever import retrieve_sop_context
 from support.responder import draft_response
 from support.escalation import should_escalate, is_unresolved
 from support.ticket_store import create_ticket, ESCALATED, OPEN, RESOLVED
 from support import audit
 from support import tracing
+from support.notifier import notify_escalation
 import os
 
 _mem0_client = None
@@ -115,7 +117,7 @@ def run_support_workflow(query: str, user_email: str = "default_user", org_id: s
         with tracing.observation(
             "sop_retrieve", as_type="retriever", input={"query": query}
         ) as span:
-            retrieval = retrieve_sop_context(query, user_email)
+            retrieval = retrieve_sop_context(query, user_email, org_id=org_id)
             audit.log_event(run_id, "SOP_RETRIEVED", {
                 "scoped_to_sop": retrieval["scoped_to_sop"],
                 "num_sources": len(retrieval["sources"]),
@@ -204,6 +206,14 @@ def run_support_workflow(query: str, user_email: str = "default_user", org_id: s
                 audit.log_event(run_id, "ESCALATED", {
                     "reason": escalation_reason
                 })
+                notify_escalation(
+                    ticket_id=ticket["ticket_id"],
+                    query=query,
+                    issue_type=classification["issue_type"],
+                    severity=classification["severity"],
+                    reason=escalation_reason,
+                    org_id=org_id,
+                )
 
         audit.finish_run(run_id, final_state)
 
